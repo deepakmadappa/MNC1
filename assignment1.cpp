@@ -5,11 +5,8 @@
 // Copyright   : Your copyright notice
 // Description : Hello World in C, Ansi-style
 //============================================================================
-
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <string>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -17,14 +14,25 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <unistd.h>
-int strlen(char *str);
+#include <iostream>
+#include <string.h>
+
+#include "inc/runnable.h"
+#include "inc/host.h"
+#include "inc/helper.h"
+
 void PrintUsage();
+void HandleUserInput(Runnable*, char*);
 using namespace std;
+
 const int STDIN = 0;
+const int MAX_CLIENTS = 4;
 
 
 int main(int argc, char* argv[]) {
 	bool bIsServerMode = true;
+	Runnable *thisProgram = NULL;
+	GetMyIP();
 	if(argc != 3) {
 		PrintUsage();
 	}
@@ -48,18 +56,22 @@ int main(int argc, char* argv[]) {
 		PrintUsage();
 	}
 
-	/* Code copied from https://gist.github.com/silv3rm00n/5604330 begins*/
+	if(bIsServerMode)
+		thisProgram = new Server(port);
+	else
+		thisProgram = new Client(port);
+
+	/* Skeleton code to initialize socket and Select copied from https://gist.github.com/silv3rm00n/5604330*/
     int opt = 1;
-    int sockListenNew , addrlen , new_socket , client_socket[4] , max_clients = 4 , activity, i , valread , sd;
+    int sockListenNew , addrlen , new_socket , client_socket[MAX_CLIENTS];
 	int max_sd;
     struct sockaddr_in address;
 
-    char buffer[1025];  //data buffer of 1K
     //set of socket descriptors
     fd_set readfds;
 
     //initialise all client_socket[] to 0 so not checked
-    for (i = 0; i < max_clients; i++)
+    for (int i = 0; i < MAX_CLIENTS; i++)
     {
         client_socket[i] = 0;
     }
@@ -84,16 +96,14 @@ int main(int argc, char* argv[]) {
     address.sin_port = htons( port );
 
     //bind the socket to localhost port 8888
-    if (bind(sockListenNew, (struct sockaddr *)&address, sizeof(address))<0)
-    {
+    if (bind(sockListenNew, (struct sockaddr *)&address, sizeof(address))<0) {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
 	printf("Listener on port %d \n", port);
 
     //try to specify maximum of 3 pending connections for the master socket
-    if (listen(sockListenNew, 3) < 0)
-    {
+    if (listen(sockListenNew, 3) < 0) {
         perror("listen");
         exit(EXIT_FAILURE);
     }
@@ -101,8 +111,7 @@ int main(int argc, char* argv[]) {
     //accept the incoming connection
     addrlen = sizeof(address);
 
-	while(true)
-    {
+	while(true) {
         //clear the socket set
         FD_ZERO(&readfds);
 
@@ -112,10 +121,10 @@ int main(int argc, char* argv[]) {
         max_sd = sockListenNew;
 
         //add child sockets to set
-        for ( i = 0 ; i < max_clients ; i++)
+        for (int i = 0 ; i < MAX_CLIENTS ; i++)
         {
             //socket descriptor
-			sd = client_socket[i];
+			int sd = client_socket[i];
 
 			//if valid socket descriptor then add to read list
 			if(sd > 0)
@@ -128,16 +137,22 @@ int main(int argc, char* argv[]) {
 
         printf("waiting on select\n");
         //wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
-        activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
+        int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
         printf("Activity on select\n");
         if ((activity < 0) && (errno!=EINTR))
         {
             printf("select error");
         }
-
+        /* Code copied from https://gist.github.com/silv3rm00n/5604330 ends*/
+        int n = 5;
         if(FD_ISSET(STDIN, &readfds)) {
-        	printf("Input on keyboard");
+        	char buffer[50];
+
+        	n = read(STDIN, buffer, 50);
+        	HandleUserInput(thisProgram, buffer);
+        	FD_CLR(STDIN, &readfds);
         }
+        cout<<endl;
         //If something happened on the master socket , then its an incoming connection
         if (FD_ISSET(sockListenNew, &readfds))
         {
@@ -146,9 +161,6 @@ int main(int argc, char* argv[]) {
                 perror("accept");
                 exit(EXIT_FAILURE);
             }
-
-            //inform user of socket number - used in send and receive commands
-            printf("New connection , socket fd is %d , ip is : %s , port : %d \n" , new_socket , inet_ntoa(address.sin_addr) , ntohs(address.sin_port));
 
             char message[6] = "Hello";
             //send new connection greeting message
@@ -160,7 +172,7 @@ int main(int argc, char* argv[]) {
             puts("Welcome message sent successfully");
 
             //add new socket to array of sockets
-            for (i = 0; i < max_clients; i++)
+            for (int i = 0; i < MAX_CLIENTS; i++)
             {
                 //if position is empty
 				if( client_socket[i] == 0 )
@@ -174,14 +186,15 @@ int main(int argc, char* argv[]) {
         }
 
         //else its some IO operation on some other socket :)
-        for (i = 0; i < max_clients; i++)
+        for (int i = 0; i < MAX_CLIENTS; i++)
         {
-            sd = client_socket[i];
-
-            if (FD_ISSET( sd , &readfds))
+            int sd = client_socket[i];
+            char message[50];
+            int bytesRead=0;
+            if (FD_ISSET(sd , &readfds))
             {
                 //Check if it was for closing , and also read the incoming message
-                if ((valread = read( sd , buffer, 1024)) == 0)
+                if ((bytesRead = read( sd , message, 50)) == 0)
                 {
                     //Somebody disconnected , get his details and print
                     getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
@@ -196,17 +209,12 @@ int main(int argc, char* argv[]) {
                 else
                 {
                     //set the string terminating NULL byte on the end of the data read
-                    buffer[valread] = '\0';
-                    send(sd , buffer , strlen(buffer) , 0 );
+                	message[bytesRead] = '\0';
+                    send(sd , message , strlen(message) , 0 );
                 }
             }
         }
     }
-
-
-
-	/* Code copied from https://gist.github.com/silv3rm00n/5604330 ends*/
-
 	return EXIT_SUCCESS;
 }
 
@@ -215,9 +223,24 @@ void PrintUsage() {
 	exit(1);
 }
 
-int strlen(char *str) {
-	int length = 0;
-	while(str[length] != '\0')
-		length ++;
-	return length;
+void HandleUserInput(Runnable *thisProgram, char* userInput) {
+	vector<char*>* tokens = tokenize(userInput, "|\n");
+	if(tokens->size() < 1) {
+		printf("\nUnable to process command\n");
+		return;
+	}
+
+	char *commandName = ToUpper(tokens->at(0));
+
+	if(strcmp (commandName, "LIST") == 0 ) {
+		//Handle LIST Command
+		thisProgram->List();
+	} else if (strcmp (commandName, "MYIP") == 0 ) {
+
+	}
+	else {
+		printf("\nInvalid Command\n");
+	}
+
 }
+
