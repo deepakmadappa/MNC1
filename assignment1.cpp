@@ -25,14 +25,11 @@ void PrintUsage();
 void HandleUserInput(Runnable*, char*);
 using namespace std;
 
-const int STDIN = 0;
-const int MAX_CLIENTS = 4;
-
 
 int main(int argc, char* argv[]) {
 	bool bIsServerMode = true;
 	Runnable *thisProgram = NULL;
-	GetMyIP();
+	//GetMyIP();
 	if(argc != 3) {
 		PrintUsage();
 	}
@@ -56,14 +53,16 @@ int main(int argc, char* argv[]) {
 		PrintUsage();
 	}
 
+	int sockListenNew , addrlen , client_socket[MAX_CLIENTS];
+
 	if(bIsServerMode)
 		thisProgram = new Server(port);
 	else
-		thisProgram = new Client(port);
+		thisProgram = new Client(port, client_socket);
 
 	/* Skeleton code to initialize socket and Select copied from https://gist.github.com/silv3rm00n/5604330*/
     int opt = 1;
-    int sockListenNew , addrlen , new_socket , client_socket[MAX_CLIENTS];
+
 	int max_sd;
     struct sockaddr_in address;
 
@@ -77,7 +76,7 @@ int main(int argc, char* argv[]) {
     }
 
     //create a master socket
-    if( (sockListenNew = socket(AF_INET , SOCK_STREAM , 0)) == 0)
+    if( (sockListenNew = socket(AF_INET , SOCK_STREAM , 0)) < 0)
     {
         perror("socket failed");
         exit(EXIT_FAILURE);
@@ -135,7 +134,8 @@ int main(int argc, char* argv[]) {
 				max_sd = sd;
         }
 
-        printf("waiting on select\n");
+        printf(">>");
+        fflush(stdout);
         //wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
         int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
         printf("Activity on select\n");
@@ -144,11 +144,11 @@ int main(int argc, char* argv[]) {
             printf("select error");
         }
         /* Code copied from https://gist.github.com/silv3rm00n/5604330 ends*/
-        int n = 5;
         if(FD_ISSET(STDIN, &readfds)) {
         	char buffer[50];
 
-        	n = read(STDIN, buffer, 50);
+        	int n = read(STDIN, buffer, 50);
+        	buffer[n - 1] = '\0'; //replaceing \n with \0 at the end of string
         	HandleUserInput(thisProgram, buffer);
         	FD_CLR(STDIN, &readfds);
         }
@@ -156,51 +156,25 @@ int main(int argc, char* argv[]) {
         //If something happened on the master socket , then its an incoming connection
         if (FD_ISSET(sockListenNew, &readfds))
         {
-            if ((new_socket = accept(sockListenNew, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
-            {
-                perror("accept");
-                exit(EXIT_FAILURE);
-            }
-
-            char message[6] = "Hello";
-            //send new connection greeting message
-            if( send(new_socket, message, strlen(message), 0) != strlen(message) )
-            {
-                perror("send");
-            }
-
-            puts("Welcome message sent successfully");
-
-            //add new socket to array of sockets
-            for (int i = 0; i < MAX_CLIENTS; i++)
-            {
-                //if position is empty
-				if( client_socket[i] == 0 )
-                {
-                    client_socket[i] = new_socket;
-                    printf("Adding to list of sockets as %d\n" , i);
-
-					break;
-                }
-            }
+        	thisProgram->AcceptNewConnection(sockListenNew, client_socket);
         }
 
         //else its some IO operation on some other socket :)
         for (int i = 0; i < MAX_CLIENTS; i++)
         {
             int sd = client_socket[i];
-            char message[50];
+            char message[512];
             int bytesRead=0;
             if (FD_ISSET(sd , &readfds))
             {
                 //Check if it was for closing , and also read the incoming message
-                if ((bytesRead = read( sd , message, 50)) == 0)
+                if ((bytesRead = read( sd , message, 512)) == 0)
                 {
                     //Somebody disconnected , get his details and print
                     getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
-                    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(address.sin_addr) , ntohs(address.sin_port));
+                    printf("Host disconnected , ip %s\n" , inet_ntoa(address.sin_addr));
 
-                    //Close the socket and mark as 0 in list for reuse
+                    thisProgram->HandleCloseOnOtherEnd(client_socket, i, sd);
                     close( sd );
                     client_socket[i] = 0;
                 }
@@ -210,7 +184,9 @@ int main(int argc, char* argv[]) {
                 {
                     //set the string terminating NULL byte on the end of the data read
                 	message[bytesRead] = '\0';
-                    send(sd , message , strlen(message) , 0 );
+                	printf("\n messge: %s\n", message);
+                	thisProgram->HandleActivityOnConnection(client_socket, i, message);
+                    //send(sd , message , strlen(message) , 0 );
                 }
             }
         }
@@ -224,23 +200,74 @@ void PrintUsage() {
 }
 
 void HandleUserInput(Runnable *thisProgram, char* userInput) {
-	vector<char*>* tokens = tokenize(userInput, "|\n");
-	if(tokens->size() < 1) {
+	char *delim = (char*)" ";
+	vector<char*>* tokens = tokenize(userInput, delim);
+	int inputSize = tokens->size();
+	if(inputSize < 1) {
 		printf("\nUnable to process command\n");
 		return;
 	}
 
 	char *commandName = ToUpper(tokens->at(0));
 
-	if(strcmp (commandName, "LIST") == 0 ) {
+	if(strcmp (commandName, "CREATOR") == 0 ) {
+		thisProgram->DisplayCreator();
+	} else if(strcmp (commandName, "HELP") == 0 ) {
+		thisProgram->DisplayHelp();
+	} else if (strcmp (commandName, "MYIP") == 0 ) {
+		thisProgram->DisplayIP();
+	} else if(strcmp (commandName, "MYPORT") == 0 ) {
+		thisProgram->DisplayPort();
+	} else if (strcmp (commandName, "REGISTER") == 0) {
+		if(inputSize != 3) {
+			printf("\nREGISTER <Server IP> <Server Port>");
+			return;
+		}
+		thisProgram->Register(tokens->at(1), tokens->at(2));
+	} else if (strcmp (commandName, "CONNECT") == 0) {
+		if(inputSize != 3) {
+			printf("\nUsage: CONNECT <Destination> <Port>\n");
+			return;
+		}
+		thisProgram->Connect(tokens->at(1), tokens->at(2));
+	} else if(strcmp (commandName, "LIST") == 0 ) {
 		//Handle LIST Command
 		thisProgram->List();
-	} else if (strcmp (commandName, "MYIP") == 0 ) {
-
-	}
-	else {
+	} else if (strcmp (commandName, "TERMINATE") == 0) {
+		if(inputSize != 2) {
+			printf("\nUsage: TERMINATE <Connection ID>\n");
+			return;
+		}
+		thisProgram->Terminate(tokens->at(1));
+	} else if(strcmp (commandName, "EXIT") == 0 ) {
+		//Handle LIST Command
+		thisProgram->Exit();
+	} else if (strcmp (commandName, "UPLOAD") == 0) {
+		if(inputSize != 3) {
+			printf("\nUsage: UPLOAD <Connection ID> <File Name>\n");
+			return;
+		}
+		thisProgram->Upload(tokens->at(1), tokens->at(2));
+	} else if (strcmp (commandName, "DOWNLOAD") == 0) {
+		if(inputSize < 3) {
+			printf("\nUsage: DOWNLOAD <Connection ID 1> <File Name 1> [<Connection ID 2> <File Name 2>] [<Connection ID 3> <File Name 3>]\nFile names cannot have spaces in them\n");
+			return;
+		}
+		if(inputSize == 3) {
+			thisProgram->Download(tokens->at(1), tokens->at(2));
+		} else if(inputSize == 5) {
+			thisProgram->Download(tokens->at(1), tokens->at(2), tokens->at(3), tokens->at(4));
+		} else if(inputSize == 7) {
+			thisProgram->Download(tokens->at(1), tokens->at(2), tokens->at(3), tokens->at(4), tokens->at(5), tokens->at(6));
+		}
+		else {
+			printf("\nUsage: DOWNLOAD <Connection ID 1> <File Name 1> [<Connection ID 2> <File Name 2>] [<Connection ID 3> <File Name 3>]\nFile names cannot have spaces in them\n");
+		}
+	} else if(strcmp (commandName, "STATISTICS") == 0 ) {
+		//Handle LIST Command
+		thisProgram->Statistics();
+	} else {
 		printf("\nInvalid Command\n");
 	}
-
 }
 

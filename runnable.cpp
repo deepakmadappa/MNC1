@@ -7,7 +7,11 @@
 
 #include "inc/runnable.h"
 #include <stdio.h>
+#include "inc/helper.h"
 
+Runnable::Runnable() {
+	mIP = GetMyIP(&mHostname);
+}
 void Runnable::DisplayCreator(void) const {
 	printf("Deepak Madappa, dmadappa, dmadappa@buffalo.edu\n");
 	printf("I have read and understood the course academic integrity policy located at http://www.cse.buffalo.edu/faculty/dimitrio/courses/cse4589_f14/index.html#integrity");
@@ -18,7 +22,7 @@ void Runnable::DisplayHelp(void) const {
 }
 
 void Runnable::DisplayIP(void) const {
-	printf("\nCommonIP\n");
+	printf("\nIP is: %s\n", mIP);
 }
 
 void Runnable::DisplayPort(void) const {

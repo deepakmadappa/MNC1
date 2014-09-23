@@ -4,7 +4,7 @@ OBJS =		assignment1.o runnable.o server.o helper.o client.o
 
 LIBS = 
 
-DEPS = runnable.h host.h
+DEPS = 
 
 TARGET =	assignment1
 
