@@ -18,7 +18,7 @@ public:
 	char* mHostname;
 	int mSocketIndex;
 
-	Host(char* ip, char* port, char *hostname): mSocketIndex(0), mIP(ip), mPort(port),mHostname(hostname) {
+	Host(char* ip, char* port, char *hostname): mIP(ip), mPort(port),mHostname(hostname),mSocketIndex(0) {
 
 	}
 

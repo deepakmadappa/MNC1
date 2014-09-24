@@ -15,11 +15,11 @@
 #include "host.h"
 
 char* GetMyIP(char **outHostname);
-std::vector<char*>* tokenize(char *inputString, char* delimiter);
+std::vector<char*>* tokenize(char *inputString,const  char* delimiter);
 char *ToUpper(char* input);
 int TCPConnect(char* IP, int nPort, bool exitOnFail);
 int TCPRecv(int sd, char* readBuffer, int length, bool exitOnFail);
-int TCPSend(int sd, char* sendBuffer, int length, bool exitOnFail);
+int TCPSend(int sd, const char* sendBuffer, int length, bool exitOnFail);
 bool Contains(std::list<Host*>* clientList, Host* item);
 char* SerializeList(std::list<Host*>* clientList);
 void PrintClientList(std::list<Host*>* clientList);

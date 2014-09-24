@@ -49,7 +49,7 @@ void Runnable::Exit() {
 	printf("\nInvalid Command\n");
 }
 
-void Runnable::Upload(char* strConnectionID, char* strFileName) {
+void Runnable::Upload(char* strConnectionID, char* strFileName, int sd) const{
 	printf("\nInvalid Command\n");
 }
 

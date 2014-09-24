@@ -163,12 +163,12 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < MAX_CLIENTS; i++)
         {
             int sd = client_socket[i];
-            char message[512];
+            char message[PACKET_SIZE + 1];
             int bytesRead=0;
             if (FD_ISSET(sd , &readfds))
             {
                 //Check if it was for closing , and also read the incoming message
-                if ((bytesRead = read( sd , message, 512)) == 0)
+                if ((bytesRead = read( sd , message, PACKET_SIZE)) == 0)
                 {
                     //Somebody disconnected , get his details and print
                     getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
@@ -220,7 +220,7 @@ void HandleUserInput(Runnable *thisProgram, char* userInput) {
 		thisProgram->DisplayPort();
 	} else if (strcmp (commandName, "REGISTER") == 0) {
 		if(inputSize != 3) {
-			printf("\nREGISTER <Server IP> <Server Port>");
+			printf("\nUsage: REGISTER <Server IP> <Server Port>");
 			return;
 		}
 		thisProgram->Register(tokens->at(1), tokens->at(2));
@@ -247,7 +247,7 @@ void HandleUserInput(Runnable *thisProgram, char* userInput) {
 			printf("\nUsage: UPLOAD <Connection ID> <File Name>\n");
 			return;
 		}
-		thisProgram->Upload(tokens->at(1), tokens->at(2));
+		thisProgram->Upload(tokens->at(1), tokens->at(2), 0);
 	} else if (strcmp (commandName, "DOWNLOAD") == 0) {
 		if(inputSize < 3) {
 			printf("\nUsage: DOWNLOAD <Connection ID 1> <File Name 1> [<Connection ID 2> <File Name 2>] [<Connection ID 3> <File Name 3>]\nFile names cannot have spaces in them\n");

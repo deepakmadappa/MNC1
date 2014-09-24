@@ -45,7 +45,7 @@ void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	}
 	printf("\nAccepted Connection from %s\n", clientIP);
 
-	char message[512];
+	char message[PACKET_SIZE + 1];
 	//send new connection greeting message
 	char strPort[10];
 	TCPRecv(new_socket, strPort, 10, true);
@@ -61,7 +61,7 @@ void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	bool isDuplicate = Contains(mClientList, newHost);
 	if(isDuplicate) {
 		strcpy(message, "d");
-		TCPSend(new_socket, message, 512, true);
+		TCPSend(new_socket, message, PACKET_SIZE, true);
 		return;
 	}
 	mClientList->push_back(newHost);
@@ -69,7 +69,7 @@ void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	strcpy(message, "s|");
 	strcpy(&(message[2]), strClientList);
 	delete strClientList;
-	TCPSend(new_socket, message, 512, true);
+	TCPSend(new_socket, message, PACKET_SIZE, true);
 	printf("\nNew Client Registered, IP:%s, Port:%s, Host:%s\n", clientIP, strPort, host);
 	//add new socket to array of sockets
 	for (int i = 0; i < MAX_CLIENTS; i++)
@@ -87,7 +87,7 @@ void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	for (int i = 0; i < MAX_CLIENTS; i++) {
 		if( newClient[i] > 0 && i != newHost->mSocketIndex)
 		{
-			TCPSend(newClient[i] , message, 512, true);
+			TCPSend(newClient[i] , message, PACKET_SIZE, true);
 		}
 	}
 }

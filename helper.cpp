@@ -23,7 +23,7 @@
 
 using namespace std;
 
-vector<char*>* tokenize(char *inputString, char* delimiter) {
+vector<char*>* tokenize(char *inputString, const char* delimiter) {
 	vector<char*>* tokens = new vector<char*>();
 	tokens->clear();
 	int len = strlen(inputString);
@@ -50,7 +50,7 @@ char* GetMyIP(char **outHostname) {
 
 	memset(&address, 0, sizeof(address));
 	address.sin_family = AF_INET;
-	char *googleIP = "74.125.225.115";
+	const char *googleIP = "74.125.225.115";
 
 	int err = inet_pton(AF_INET, googleIP, &address.sin_addr.s_addr);
 	if(err == 0) {
@@ -67,7 +67,7 @@ char* GetMyIP(char **outHostname) {
 		perror("connect failed\n");
 		exit(1);
 	}
-	struct sockaddr_in addr; socklen_t *addrlen;
+	struct sockaddr_in addr;
 	unsigned int len = sizeof(sockaddr);
 
 
@@ -149,7 +149,7 @@ int TCPConnect(char* IP, int nPort, bool exitOnFail) {
 	return tcpSocket;
 }
 
-int TCPSend(int sd, char* sendBuffer, int length, bool exitOnFail) {
+int TCPSend(int sd, const char* sendBuffer, int length, bool exitOnFail) {
 	int bytesWritten;
 	int remainingBytes = length;
 	int index = 0;
@@ -201,7 +201,7 @@ void PrintClientList(list<Host*>* clientList) {
 void PrintVector(vector<Host*>* vector) {
 	int index = 1;
 	printf("\n");
-	for(int i = 0; i < vector->size(); i++) {
+	for(unsigned int i = 0; i < vector->size(); i++) {
 		printf("%d\t%s\t%s\t%s\n", index++, vector->at(i)->mHostname, vector->at(i)->mIP, vector->at(i)->mPort);
 	}
 }

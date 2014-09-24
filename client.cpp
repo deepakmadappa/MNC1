@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <fcntl.h>
 
 using namespace std;
 
@@ -27,6 +28,7 @@ Client::Client(int port, int* socketlist):Runnable(), mnConnections(0) {
 	mClientsList = new std::vector<Host*>();
 	mConnectionList = new std::list<Host*>();
 	mSocketList = socketlist;
+	mCurrentDownloadList = new std::list<unsigned long*>();
 }
 
 void Client::DisplayHelp() const {
@@ -57,8 +59,9 @@ void Client::Register(char* strIP, char* strPort) {
 	char writebuffer[10];
 	sprintf(writebuffer, "%d", mPort);
 	TCPSend(serverSocket, writebuffer, 10, true);
-	char readBuffer[512];
-	TCPRecv(serverSocket, readBuffer, 512, true);
+	char readBuffer[PACKET_SIZE + 1];
+	TCPRecv(serverSocket, readBuffer, PACKET_SIZE, true);
+	readBuffer[PACKET_SIZE] = '\0';
 	HandleRegisterResponse(readBuffer);
 	Host *server = new Host(strIP, strPort, 0 );
 	for (int i = 0; i < MAX_CLIENTS; i++)
@@ -90,7 +93,7 @@ void Client::Connect(char* strDestination, char* strPort) {
 	sprintf(writebuffer, "%d", mPort);
 	TCPSend(peerSocket, writebuffer, 10, true);
 
-	char readBuffer[512];
+	char readBuffer[2];
 	if(TCPRecv(peerSocket, readBuffer, 2, false) != 0) {
 		printf("\nRecv falied\n");
 		return;
@@ -163,12 +166,96 @@ void Client::Exit() {
 	exit(0);
 }
 
-void Client::Upload(char* strConnectionID, char* strFileName) {
-	printf("\nClient Upload\n");
+void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
+	if(sd == 0) {
+		Host *host = 0;
+		int nConnectionID = strtol(strConnectionID, NULL, 10);
+		int connectionIndex = 1;
+		if(nConnectionID == 0) {
+			printf("\nInvalid Connection ID\n");
+			return;
+		}
+		for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++)
+		{
+			if(nConnectionID == connectionIndex ) {
+				host = (*it);
+				break;
+			}
+			connectionIndex++;
+		}
+		if(host == 0) {
+			printf("\nInvalid Connection ID\n");
+			return;
+		}
+		sd = mSocketList[host->mSocketIndex];
+	}
+	int fd = open(strFileName, O_RDONLY);
+	if(fd <= 0) {
+		printf("\nProblem occured opening file: %d\n", errno);
+		return;
+	}
+	off_t fileSize = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+	char firstPacket[PACKET_SIZE];
+	vector<char*> *fileTokens = tokenize(strFileName,"/");
+	sprintf(firstPacket,"u|%ld|%s", fileSize, fileTokens->at(fileTokens->size() - 1));
+	if(TCPSend(sd, firstPacket, PACKET_SIZE, false)) {
+		printf("\nSending first packet failed\n");
+		return;
+	}
+	char buffer[PACKET_SIZE];
+	while(read(fd, &buffer, PACKET_SIZE)) {
+		if(TCPSend(sd, buffer, PACKET_SIZE, false)) {
+			printf("\nUpload failed\n");
+			return;
+		}
+	}
+	printf("\nUpload complete\n");
 }
 
 void Client::Download(char* strConnectionID1, char* strFile1, char* strConnectionID2 /*=NULL*/, char* strFile2 /*=NULL*/, char* strConnectionID3 /*=NULL*/, char* strFile3 /*=NULL*/) {
-	printf("\nClient Download\n");
+	HandleDownload(strConnectionID1, strFile1);
+	if(strConnectionID2 != NULL) {
+		HandleDownload(strConnectionID2, strFile2);
+	}
+	if(strConnectionID3 != NULL) {
+		HandleDownload(strConnectionID3, strFile3);
+	}
+}
+
+void Client::HandleDownload(char *strConnectionID, char *strFile) {
+	Host *host = 0;
+	int nConnectionID = strtol(strConnectionID, NULL, 10);
+	int connectionIndex = 1;
+	if(nConnectionID == 0) {
+		printf("\nInvalid Connection ID\n");
+		return;
+	}
+	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++)
+	{
+		if(nConnectionID == connectionIndex ) {
+			host = (*it);
+			break;
+		}
+		connectionIndex++;
+	}
+	if(host == 0) {
+		printf("\nInvalid Connection ID\n");
+		return;
+	}
+	int sd = mSocketList[host->mSocketIndex];
+	char buffer[PACKET_SIZE + 1];
+	sprintf(buffer,"d|%s", strFile);
+	if(TCPSend(sd, buffer, PACKET_SIZE, false)) {
+		printf("\nDownload Request failed\n");
+	}
+	if(TCPRecv(sd, buffer, PACKET_SIZE, false)) {
+		printf("\nDownload request failed\n");
+	}
+	if(buffer[0] != 'u') {
+		printf("\nDownload request rejected\n");
+	}
+	HandleUploadRequest(buffer, sd);
 }
 
 void Client::Statistics() {
@@ -193,7 +280,6 @@ void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 		perror("getnameinfo failed\n");
 		exit(1);
 	}
-	char message[512];
 	char strPort[10];
 	TCPRecv(new_socket, strPort, 10, true);
 
@@ -207,7 +293,7 @@ void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 	char *cpyIP = new char[20];
 	char *cpyHostname = new char[50];
 	printf("\nConnected to %s@%s\n", theirIP, strPort);
-	strPort[9] = '\0';
+	strPort[9] = '\0';	// stop some malicious guy from typing long port and crashing the system
 	strcpy(cpyIP, theirIP);
 	strcpy(cpyPort, strPort);
 	strcpy(cpyHostname, host);
@@ -275,16 +361,83 @@ void Client::HandleRegisterResponse(char* responseReceived) {
 
 void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
 	//Handle current downloads here
-
+	int sd = clientSockets[socketIindex];
+	bool bFound  = false;
+	unsigned long *sdDetails = 0;
+	for (std::list<unsigned long*>::iterator it = mCurrentDownloadList->begin(); it != mCurrentDownloadList->end(); it++) {
+		sdDetails = (*it);
+		if(sdDetails[0] == sd) {	//the activity in on a socket which has a download in progress
+			bFound = true;
+			break;
+		}
+	}
+	if(bFound) {
+		HandleContinueDownload(message, sdDetails);
+		return;
+	}
 	//
 	if(strlen(message) > 2 ) {
 		switch(message[0]) {
 		case 's':	//This is a message from server updating connection list
 			HandleRegisterResponse(message);
 			break;
+		case 'u':
+			HandleUploadRequest(message, clientSockets[socketIindex]);
+		case 'd':
+			HandleDownloadRequest(message, clientSockets[socketIindex]);
 		default:	//oh oh
 			break;
 		}
+	}
+}
+
+void Client::HandleUploadRequest(char* message, int sd) {
+	vector<char*> *tokens = tokenize(message, "|");
+	unsigned int fileSize = 0;
+	if(tokens->size() < 3 || ((fileSize = strtol(tokens->at(1), NULL ,10)) == 0)) {
+		printf("\nRequest Incorrect\n");
+		return;
+	}
+	int fd = open(tokens->at(2), O_CREAT|O_WRONLY|O_TRUNC, 00777);
+	if(fd <= 0) {
+		printf("\nOpening file failed because %d\n", errno);
+		return;
+	}
+	unsigned long *sdFdPair = new unsigned long[3];
+	sdFdPair[0] = sd;
+	sdFdPair[1] = fd;
+	sdFdPair[2] = fileSize;
+
+	mCurrentDownloadList->push_back(sdFdPair);
+	delete tokens;
+}
+
+void Client::HandleDownloadRequest(char *message, int sd) {
+	vector<char*> *tokens = tokenize(message, "|");
+		unsigned int fileSize = 0;
+		if(tokens->size() < 2) {
+			printf("\nRequest Incorrect\n");
+			return;
+		}
+		Upload(NULL, tokens->at(1), sd);
+}
+
+void Client::HandleContinueDownload(char *message, unsigned long* sdDetails) {
+	int bytesToWrite = (sdDetails[2] > PACKET_SIZE )? PACKET_SIZE: sdDetails[2];	//if byresRemaining is greater than PACKET_SIZE, write packet size and keep going else we must stop as this is the last packet
+	int fd = sdDetails[1];
+	int bytesWritten = write(fd, message, bytesToWrite);
+	if(bytesWritten <= 0) {
+		printf("\nI didn't write anything because :%d\n", errno);
+	}
+	if(sdDetails[2] > PACKET_SIZE) {
+		sdDetails[2] -= PACKET_SIZE; //just decrement remaning bytes and continue
+	} else {
+		//download finished close the file and get rid of sdDetail from list
+		printf("\nReceive complete\n");
+		close(fd);
+		mCurrentDownloadList->remove(sdDetails);
+		delete sdDetails;
+		//do all your download timing stuff here
 	}
 }
 
@@ -292,8 +445,3 @@ Client::~Client() {
 	delete mClientsList;
 	delete mConnectionList;
 }
-
-
-
-
-
