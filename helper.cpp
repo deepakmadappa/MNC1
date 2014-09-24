@@ -27,7 +27,7 @@ vector<char*>* tokenize(char *inputString, const char* delimiter) {
 	vector<char*>* tokens = new vector<char*>();
 	tokens->clear();
 	int len = strlen(inputString);
-	char* dupString = new char[len];
+	char* dupString = new char[len+1];
 	strcpy(dupString, inputString);
 	char* tok = strtok(dupString, delimiter);
 	while (tok != NULL)

@@ -200,6 +200,7 @@ void PrintUsage() {
 }
 
 void HandleUserInput(Runnable *thisProgram, char* userInput) {
+	printf("\n%s\n",userInput);
 	char *delim = (char*)" ";
 	vector<char*>* tokens = tokenize(userInput, delim);
 	int inputSize = tokens->size();

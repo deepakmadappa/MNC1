@@ -63,7 +63,11 @@ void Client::Register(char* strIP, char* strPort) {
 	TCPRecv(serverSocket, readBuffer, PACKET_SIZE, true);
 	readBuffer[PACKET_SIZE] = '\0';
 	HandleRegisterResponse(readBuffer);
-	Host *server = new Host(strIP, strPort, 0 );
+	char *cpyDest = new char[strlen(strIP)];
+	char *cpyPort = new char[strlen(strPort)];
+	strcpy(cpyDest, strIP);
+	strcpy(cpyPort, strPort);
+	Host *server = new Host(cpyDest, cpyPort, 0 );
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		//if position is empty
