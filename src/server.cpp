@@ -4,8 +4,8 @@
  *  Created on: Sep 14, 2014
  *      Author: adminuser
  */
-#include "inc/runnable.h"
-#include "inc/helper.h"
+#include "runnable.h"
+#include "helper.h"
 #include <string.h>
 #include <stdio.h>
 #include <arpa/inet.h>

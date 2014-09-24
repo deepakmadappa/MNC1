@@ -17,9 +17,9 @@
 #include <iostream>
 #include <string.h>
 
-#include "inc/runnable.h"
-#include "inc/host.h"
-#include "inc/helper.h"
+#include "runnable.h"
+#include "host.h"
+#include "helper.h"
 
 void PrintUsage();
 void HandleUserInput(Runnable*, char*);

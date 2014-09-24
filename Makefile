@@ -1,19 +1,22 @@
-CXXFLAGS =	-O2 -g -Wall -fmessage-length=0
+INC_DIR	= ./include
+SRC_DIR = ./src
+OBJ_DIR	= ./object
 
-OBJS =		assignment1.o runnable.o server.o helper.o client.o
+SRC_FILES = $(wildcard $(SRC_DIR)/*.cpp)
+OBJ_FILES = $(SRC_FILES:.cpp=.o)
+OBJ_PATH  = $(patsubst $(SRC_DIR)/%,$(OBJ_DIR)/%,$(OBJ_FILES))
 
-LIBS = 
+LIBS	= 
+CC	= /usr/bin/g++
+CFLAGS	= -I$(INC_DIR)
 
-DEPS = 
+all: assignment1
 
-TARGET =	assignment1
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-IDIR = -I./inc
-
-$(TARGET):	$(OBJS)
-	$(CXX) -o $(TARGET) $(OBJS) $(LIBS) $(IDIR)
-
-all:	$(TARGET)
+assignment1: $(OBJ_PATH)
+	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJ_DIR)/*.o $(INC_DIR)/*~ assignment1

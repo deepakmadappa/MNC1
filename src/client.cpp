@@ -6,8 +6,8 @@
  */
 
 #include <vector>
-#include "inc/helper.h"
-#include "inc/runnable.h"
+#include "helper.h"
+#include "runnable.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

@@ -5,9 +5,9 @@
  *      Author: adminuser
  */
 
-#include "inc/runnable.h"
+#include "runnable.h"
 #include <stdio.h>
-#include "inc/helper.h"
+#include "helper.h"
 
 Runnable::Runnable() {
 	mIP = GetMyIP(&mHostname);

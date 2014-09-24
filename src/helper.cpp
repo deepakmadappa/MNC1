@@ -19,7 +19,7 @@
 #include <vector>
 #include <netdb.h>
 #include <list>
-#include "inc/host.h"
+#include "host.h"
 
 using namespace std;
 
