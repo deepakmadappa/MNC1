@@ -16,7 +16,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 assignment1: $(OBJ_PATH)
-	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
+	$(CC) -o $@ $^ -O2 -g -Wall -fmessage-length=0 $(CFLAGS) $(LIBS)
 
 clean:
 	rm -f $(OBJ_DIR)/*.o $(INC_DIR)/*~ assignment1

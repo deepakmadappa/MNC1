@@ -77,14 +77,14 @@ char* GetMyIP(char **outHostname) {
 	}
 
 	char* clientIP = inet_ntoa(addr.sin_addr);
-/*
+	/*
 	char host[1024];
 	char service[20];
 
 	// pretend sa is full of good information about the host and port...
 
 	getnameinfo((struct sockaddr*)&addr, sizeof addr, host, sizeof host, service, sizeof service, 0);
-*/
+	 */
 
 	char *host = new char[50];
 	char serv[50];
@@ -110,7 +110,7 @@ char* ToUpper(char* input) {
 	return output;
 }
 
-int TCPConnect(char* IP, int nPort, bool exitOnFail) {
+int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/) {
 	struct sockaddr_in address;
 	//create an UDP socket
 	int tcpSocket;
@@ -145,6 +145,14 @@ int TCPConnect(char* IP, int nPort, bool exitOnFail) {
 		if(exitOnFail)
 			exit(EXIT_FAILURE);
 		return -1;
+	}
+	if(outHostName!=NULL) {
+		char *host = outHostName;
+		char serv[50];
+		if(getnameinfo((struct sockaddr*)&address, sizeof(address), host, 50, serv, 50, 0)) {
+			perror("getnameinfo failed\n");
+			exit(1);
+		}
 	}
 	return tcpSocket;
 }
@@ -186,15 +194,16 @@ int TCPRecv(int sd, char* readBuffer, int length, bool exitOnFail) {
 
 bool Contains(list<Host*>* clientList, Host* item) {
 	for (std::list<Host*>::iterator it = clientList->begin(); it != clientList->end(); it++)
-	    if(item->IsEqual(*it))
-	    	return true;
+		if(item->IsEqual(*it))
+			return true;
 	return false;
 }
 
 void PrintClientList(list<Host*>* clientList) {
 	int index = 1;
 	for (std::list<Host*>::iterator it = clientList->begin(); it != clientList->end(); it++) {
-		printf("%d\t%s\t%s\n", index++, (*it)->mIP, (*it)->mPort);
+		//printf("%d\t%s\t%s\n", index++, (*it)->mIP, (*it)->mPort);
+		printf("%-5d%-35s%-20s%-8s\n", index++, (*it)->mHostname, (*it)->mIP, (*it)->mPort);
 	}
 }
 

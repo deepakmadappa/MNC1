@@ -17,7 +17,7 @@
 char* GetMyIP(char **outHostname);
 std::vector<char*>* tokenize(char *inputString,const  char* delimiter);
 char *ToUpper(char* input);
-int TCPConnect(char* IP, int nPort, bool exitOnFail);
+int TCPConnect(char* IP, int nPort, bool exitOnFail, char* outHostName = NULL);
 int TCPRecv(int sd, char* readBuffer, int length, bool exitOnFail);
 int TCPSend(int sd, const char* sendBuffer, int length, bool exitOnFail);
 bool Contains(std::list<Host*>* clientList, Host* item);

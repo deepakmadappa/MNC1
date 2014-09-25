@@ -110,7 +110,7 @@ void Server::HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) 
 	}
 }
 
-void Server::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
+void Server::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket) {
 
 }
 

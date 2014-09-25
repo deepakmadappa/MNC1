@@ -52,7 +52,8 @@ void Client::Register(char* strIP, char* strPort) {
 		printf("\nInvalid port number\n");
 		return;
 	}
-	int serverSocket = TCPConnect(strIP, nPort,false);
+	char *hostName = new char[100];
+	int serverSocket = TCPConnect(strIP, nPort, false, hostName);
 	if(serverSocket == -1) {
 		return;
 	}
@@ -67,7 +68,7 @@ void Client::Register(char* strIP, char* strPort) {
 	char *cpyPort = new char[strlen(strPort)];
 	strcpy(cpyDest, strIP);
 	strcpy(cpyPort, strPort);
-	Host *server = new Host(cpyDest, cpyPort, 0 );
+	Host *server = new Host(cpyDest, cpyPort, hostName);
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		//if position is empty
@@ -89,7 +90,8 @@ void Client::Connect(char* strDestination, char* strPort) {
 		return;
 	}
 	//TODO: add code to check if the connection exists in the list
-	int peerSocket = TCPConnect(strDestination, nPort, false);
+	char *hostName = new char[100];
+	int peerSocket = TCPConnect(strDestination, nPort, false, hostName);
 	if(peerSocket == -1) {
 		return;
 	}
@@ -111,7 +113,7 @@ void Client::Connect(char* strDestination, char* strPort) {
 	char *cpyPort = new char[strlen(strPort)];
 	strcpy(cpyDest, strDestination);
 	strcpy(cpyPort, strPort);
-	Host *host = new Host(cpyDest,cpyPort, NULL);
+	Host *host = new Host(cpyDest,cpyPort, hostName);
 
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
@@ -170,6 +172,11 @@ void Client::Exit() {
 	exit(0);
 }
 
+/**
+ * Reusing the same function for both upload and download, when called for upload strConnectionID will have value and sd = 0
+ * when called from download it'll be other way
+ * The application is going to block on this function till the whole file is transferred in both cases
+ */
 void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 	if(sd == 0) {
 		Host *host = 0;
@@ -196,6 +203,10 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 	int fd = open(strFileName, O_RDONLY);
 	if(fd <= 0) {
 		printf("\nProblem occured opening file: %d\n", errno);
+		if(sd != 0) {
+			char msg[PACKET_SIZE] = "f";
+			TCPSend(sd, msg, PACKET_SIZE, false);
+		}
 		return;
 	}
 	off_t fileSize = lseek(fd, 0, SEEK_END);
@@ -210,24 +221,24 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 	char buffer[PACKET_SIZE];
 	while(read(fd, &buffer, PACKET_SIZE)) {
 		if(TCPSend(sd, buffer, PACKET_SIZE, false)) {
-			printf("\nUpload failed\n");
+			printf("\nTransfer failed\n");
 			return;
 		}
 	}
-	printf("\nUpload complete\n");
+	printf("\nTransfer complete\n");
 }
 
 void Client::Download(char* strConnectionID1, char* strFile1, char* strConnectionID2 /*=NULL*/, char* strFile2 /*=NULL*/, char* strConnectionID3 /*=NULL*/, char* strFile3 /*=NULL*/) {
-	HandleDownload(strConnectionID1, strFile1);
+	HandleDownloadCommandFromUser(strConnectionID1, strFile1);
 	if(strConnectionID2 != NULL) {
-		HandleDownload(strConnectionID2, strFile2);
+		HandleDownloadCommandFromUser(strConnectionID2, strFile2);
 	}
 	if(strConnectionID3 != NULL) {
-		HandleDownload(strConnectionID3, strFile3);
+		HandleDownloadCommandFromUser(strConnectionID3, strFile3);
 	}
 }
 
-void Client::HandleDownload(char *strConnectionID, char *strFile) {
+void Client::HandleDownloadCommandFromUser(char *strConnectionID, char *strFile) {
 	Host *host = 0;
 	int nConnectionID = strtol(strConnectionID, NULL, 10);
 	int connectionIndex = 1;
@@ -259,7 +270,7 @@ void Client::HandleDownload(char *strConnectionID, char *strFile) {
 	if(buffer[0] != 'u') {
 		printf("\nDownload request rejected\n");
 	}
-	HandleUploadRequest(buffer, sd);
+	HandleTransferRequest(buffer, sd);
 }
 
 void Client::Statistics() {
@@ -363,7 +374,7 @@ void Client::HandleRegisterResponse(char* responseReceived) {
 	PrintVector(mClientsList);
 }
 
-void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
+void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket) {
 	//Handle current downloads here
 	int sd = clientSockets[socketIindex];
 	bool bFound  = false;
@@ -376,7 +387,7 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 		}
 	}
 	if(bFound) {
-		HandleContinueDownload(message, sdDetails);
+		HandlePacketOnSocketWithOngoingTransfer(message, sdDetails, socketIindex, timeTakenForThisPacket);
 		return;
 	}
 	//
@@ -386,16 +397,16 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 			HandleRegisterResponse(message);
 			break;
 		case 'u':
-			HandleUploadRequest(message, clientSockets[socketIindex]);
+			HandleTransferRequest(message, clientSockets[socketIindex]);
 		case 'd':
-			HandleDownloadRequest(message, clientSockets[socketIindex]);
+			HandleDownloadRequestFromOtherSide(message, clientSockets[socketIindex]);
 		default:	//oh oh
 			break;
 		}
 	}
 }
 
-void Client::HandleUploadRequest(char* message, int sd) {
+void Client::HandleTransferRequest(char* message, int sd) {
 	vector<char*> *tokens = tokenize(message, "|");
 	unsigned int fileSize = 0;
 	if(tokens->size() < 3 || ((fileSize = strtol(tokens->at(1), NULL ,10)) == 0)) {
@@ -407,40 +418,72 @@ void Client::HandleUploadRequest(char* message, int sd) {
 		printf("\nOpening file failed because %d\n", errno);
 		return;
 	}
-	unsigned long *sdFdPair = new unsigned long[3];
-	sdFdPair[0] = sd;
-	sdFdPair[1] = fd;
-	sdFdPair[2] = fileSize;
+	char *fileName = new char[strlen(tokens->at(2)) + 1];
+	strcpy(fileName, tokens->at(2));
+	struct timeval *time= new struct timeval();
+	time->tv_sec = 0;
+	time->tv_usec = 0;
+	unsigned long *socketDownloadDetails = new unsigned long[6];
+	socketDownloadDetails[0] = sd;
+	socketDownloadDetails[1] = fd;
+	socketDownloadDetails[2] = fileSize; //for keeping remaining size
+	socketDownloadDetails[3] = fileSize;	//for keeping total size
+	socketDownloadDetails[4] = (unsigned long) fileName;	//storing the address of fileName pointer. A bit dodgy way of doing things but it works, I don't want to re write the whole data structure.
+	socketDownloadDetails[5] = (unsigned long) time;
 
-	mCurrentDownloadList->push_back(sdFdPair);
+	mCurrentDownloadList->push_back(socketDownloadDetails);
 	delete tokens;
 }
 
-void Client::HandleDownloadRequest(char *message, int sd) {
+void Client::HandleDownloadRequestFromOtherSide(char *message, int sd) {
 	vector<char*> *tokens = tokenize(message, "|");
-		unsigned int fileSize = 0;
-		if(tokens->size() < 2) {
-			printf("\nRequest Incorrect\n");
-			return;
-		}
-		Upload(NULL, tokens->at(1), sd);
+	unsigned int fileSize = 0;
+	if(tokens->size() < 2) {
+		printf("\nRequest Incorrect\n");
+		return;
+	}
+	Upload(NULL, tokens->at(1), sd);
 }
 
-void Client::HandleContinueDownload(char *message, unsigned long* sdDetails) {
-	int bytesToWrite = (sdDetails[2] > PACKET_SIZE )? PACKET_SIZE: sdDetails[2];	//if byresRemaining is greater than PACKET_SIZE, write packet size and keep going else we must stop as this is the last packet
-	int fd = sdDetails[1];
+void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned long* socketDownloadDetails, int socketIndex, struct timeval* timeTakenForThisPacket) {
+	int bytesToWrite = (socketDownloadDetails[2] > PACKET_SIZE )? PACKET_SIZE: socketDownloadDetails[2];	//if byresRemaining is greater than PACKET_SIZE, write packet size and keep going else we must stop as this is the last packet
+	int fd = socketDownloadDetails[1];
+	struct timeval writeStart, writeEnd;
+	if(gettimeofday(&writeStart, NULL) == -1) {
+		perror("Getting time of day failed");
+		exit(EXIT_FAILURE);
+	}
 	int bytesWritten = write(fd, message, bytesToWrite);
+	if(gettimeofday(&writeEnd, NULL) == -1) {
+		perror("Getting time of day failed");
+		exit(EXIT_FAILURE);
+	}
+	struct timeval* time = (struct timeval*) socketDownloadDetails[5];
+	time->tv_sec = time->tv_sec + timeTakenForThisPacket->tv_sec + (writeEnd.tv_sec - writeStart.tv_sec);
+	time->tv_usec = time->tv_usec + timeTakenForThisPacket->tv_usec + (writeEnd.tv_usec - writeStart.tv_usec);
+
 	if(bytesWritten <= 0) {
 		printf("\nI didn't write anything because :%d\n", errno);
 	}
-	if(sdDetails[2] > PACKET_SIZE) {
-		sdDetails[2] -= PACKET_SIZE; //just decrement remaning bytes and continue
+	if(socketDownloadDetails[2] > PACKET_SIZE) {
+		socketDownloadDetails[2] -= PACKET_SIZE; //just decrement remaning bytes and continue
 	} else {
+		Host *host = NULL;
+		for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
+			host = (*it);
+			if(host->mSocketIndex == socketIndex)
+				break;
+		}
 		//download finished close the file and get rid of sdDetail from list
-		printf("\nReceive complete\n");
+		struct timeval* total = (struct timeval*) socketDownloadDetails[5];
+		unsigned long fileSize = socketDownloadDetails[3];
+		unsigned long totalTime = total->tv_sec + (total->tv_usec / 1000000);
+		unsigned long rate = (fileSize * 8) / ((totalTime == 0)?1:total->tv_sec );	//we dont want divide by zero now
+		printf("File: %s transfer complete", (char*)socketDownloadDetails[4]);
+		printf("\nRx: %s->%s, File Size: %lu Bytes, Time Taken: %lu seconds, Tx Rate %lu bits/second\n", host->mHostname, this->mHostname, fileSize, total->tv_sec, rate);
 		close(fd);
-		mCurrentDownloadList->remove(sdDetails);
-		delete sdDetails;
+		mCurrentDownloadList->remove(socketDownloadDetails);
+		delete socketDownloadDetails;
 		//do all your download timing stuff here
 	}
 }

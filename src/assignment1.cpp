@@ -61,141 +61,152 @@ int main(int argc, char* argv[]) {
 		thisProgram = new Client(port, client_socket);
 
 	/* Skeleton code to initialize socket and Select copied from https://gist.github.com/silv3rm00n/5604330*/
-    int opt = 1;
+	int opt = 1;
 
 	int max_sd;
-    struct sockaddr_in address;
+	struct sockaddr_in address;
 
-    //set of socket descriptors
-    fd_set readfds;
+	//set of socket descriptors
+	fd_set readfds;
 
-    //initialise all client_socket[] to 0 so not checked
-    for (int i = 0; i < MAX_CLIENTS; i++)
-    {
-        client_socket[i] = 0;
-    }
+	//initialise all client_socket[] to 0 so not checked
+	for (int i = 0; i < MAX_CLIENTS; i++)
+	{
+		client_socket[i] = 0;
+	}
 
-    //create a master socket
-    if( (sockListenNew = socket(AF_INET , SOCK_STREAM , 0)) < 0)
-    {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
+	//create a master socket
+	if( (sockListenNew = socket(AF_INET , SOCK_STREAM , 0)) < 0)
+	{
+		perror("socket failed");
+		exit(EXIT_FAILURE);
+	}
 
-    //set master socket to allow multiple connections , this is just a good habit, it will work without this
-    if( setsockopt(sockListenNew, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0 )
-    {
-        perror("setsockopt");
-        exit(EXIT_FAILURE);
-    }
+	//set master socket to allow multiple connections , this is just a good habit, it will work without this
+	if( setsockopt(sockListenNew, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0 )
+	{
+		perror("setsockopt");
+		exit(EXIT_FAILURE);
+	}
 
-    //type of socket created
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons( port );
+	//type of socket created
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons( port );
 
-    //bind the socket to localhost port 8888
-    if (bind(sockListenNew, (struct sockaddr *)&address, sizeof(address))<0) {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
+	//bind the socket to localhost port 8888
+	if (bind(sockListenNew, (struct sockaddr *)&address, sizeof(address))<0) {
+		perror("bind failed");
+		exit(EXIT_FAILURE);
+	}
 	printf("Listener on port %d \n", port);
 
-    //try to specify maximum of 3 pending connections for the master socket
-    if (listen(sockListenNew, 3) < 0) {
-        perror("listen");
-        exit(EXIT_FAILURE);
-    }
+	//try to specify maximum of 3 pending connections for the master socket
+	if (listen(sockListenNew, 3) < 0) {
+		perror("listen");
+		exit(EXIT_FAILURE);
+	}
 
-    //accept the incoming connection
-    addrlen = sizeof(address);
+	//accept the incoming connection
+	addrlen = sizeof(address);
 
 	while(true) {
-        //clear the socket set
-        FD_ZERO(&readfds);
+		//clear the socket set
+		FD_ZERO(&readfds);
 
-        //add master socket to set
-        FD_SET(sockListenNew, &readfds);
-        FD_SET(STDIN, &readfds);
-        max_sd = sockListenNew;
+		//add master socket to set
+		FD_SET(sockListenNew, &readfds);
+		FD_SET(STDIN, &readfds);
+		max_sd = sockListenNew;
 
-        //add child sockets to set
-        for (int i = 0 ; i < MAX_CLIENTS ; i++)
-        {
-            //socket descriptor
+		//add child sockets to set
+		for (int i = 0 ; i < MAX_CLIENTS ; i++)
+		{
+			//socket descriptor
 			int sd = client_socket[i];
 
 			//if valid socket descriptor then add to read list
 			if(sd > 0)
 				FD_SET( sd , &readfds);
 
-            //highest file descriptor number, need it for the select function
-            if(sd > max_sd)
+			//highest file descriptor number, need it for the select function
+			if(sd > max_sd)
 				max_sd = sd;
-        }
+		}
 
-        printf(">>");
-        fflush(stdout);
-        //wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
-        int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
-        printf("Activity on select\n");
-        if ((activity < 0) && (errno!=EINTR))
-        {
-            printf("select error");
-        }
-        /* Code copied from https://gist.github.com/silv3rm00n/5604330 ends*/
-        if(FD_ISSET(STDIN, &readfds)) {
-        	char buffer[50];
+		printf(">>");
+		fflush(stdout);
+		//wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
+		int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
+		if ((activity < 0) && (errno!=EINTR))
+		{
+			printf("select error");
+		}
+		/* Code copied from https://gist.github.com/silv3rm00n/5604330 ends*/
+		if(FD_ISSET(STDIN, &readfds)) {
+			char buffer[50];
 
-        	int n = read(STDIN, buffer, 50);
-        	buffer[n - 1] = '\0'; //replaceing \n with \0 at the end of string
-        	HandleUserInput(thisProgram, buffer);
-        	FD_CLR(STDIN, &readfds);
-        }
-        cout<<endl;
-        //If something happened on the master socket , then its an incoming connection
-        if (FD_ISSET(sockListenNew, &readfds))
-        {
-        	thisProgram->AcceptNewConnection(sockListenNew, client_socket);
-        }
+			int n = read(STDIN, buffer, 50);
+			buffer[n - 1] = '\0'; //replaceing \n with \0 at the end of string
+			HandleUserInput(thisProgram, buffer);
+			FD_CLR(STDIN, &readfds);
+		}
+		cout<<endl;
+		//If something happened on the master socket , then its an incoming connection
+		if (FD_ISSET(sockListenNew, &readfds))
+		{
+			thisProgram->AcceptNewConnection(sockListenNew, client_socket);
+		}
 
-        //else its some IO operation on some other socket :)
-        for (int i = 0; i < MAX_CLIENTS; i++)
-        {
-            int sd = client_socket[i];
-            char message[PACKET_SIZE + 1];
-            int bytesRead=0;
-            if (FD_ISSET(sd , &readfds))
-            {
-                //Check if it was for closing , and also read the incoming message
-                if ((bytesRead = read( sd , message, PACKET_SIZE)) == 0)
-                {
-                    //Somebody disconnected , get his details and print
-                    getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
-                    printf("Host disconnected , ip %s\n" , inet_ntoa(address.sin_addr));
+		//else its some IO operation on some other socket :)
+		for (int i = 0; i < MAX_CLIENTS; i++)
+		{
+			int sd = client_socket[i];
+			char message[PACKET_SIZE + 1];
+			int bytesRead=0;
+			if (FD_ISSET(sd , &readfds))
+			{
+				struct timeval startTime, endTime, *timeTakenForThisPacket = new struct timeval();
+				if(gettimeofday(&startTime, NULL) == -1) {
+					perror("Getting time of day failed");
+					exit(EXIT_FAILURE);
+				}
+				bytesRead = read( sd , message, PACKET_SIZE);
+				if(gettimeofday(&endTime, NULL) == -1) {
+					perror("Getting time of day failed");
+					exit(EXIT_FAILURE);
+				}
+				timeTakenForThisPacket->tv_sec = endTime.tv_sec - startTime.tv_sec;
+				timeTakenForThisPacket->tv_usec = endTime.tv_usec - startTime.tv_usec;
+				//Check if it was for closing , and also read the incoming message
+				if (bytesRead == 0)
+				{
+					//Somebody disconnected , get his details and print
+					getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
+					printf("Host disconnected , ip %s\n" , inet_ntoa(address.sin_addr));
 
-                    thisProgram->HandleCloseOnOtherEnd(client_socket, i, sd);
-                    close( sd );
-                    client_socket[i] = 0;
-                }
+					thisProgram->HandleCloseOnOtherEnd(client_socket, i, sd);
+					close( sd );
+					client_socket[i] = 0;
+				}
 
-                //Echo back the message that came in
-                else
-                {
-                    //set the string terminating NULL byte on the end of the data read
-                	message[bytesRead] = '\0';
-                	printf("\n messge: %s\n", message);
-                	thisProgram->HandleActivityOnConnection(client_socket, i, message);
-                    //send(sd , message , strlen(message) , 0 );
-                }
-            }
-        }
-    }
+				//Echo back the message that came in
+				else
+				{
+					//set the string terminating NULL byte on the end of the data read
+					message[bytesRead] = '\0';
+					thisProgram->HandleActivityOnConnection(client_socket, i, message, timeTakenForThisPacket);
+					//send(sd , message , strlen(message) , 0 );
+				}
+				delete timeTakenForThisPacket;
+			}
+		}
+	}
 	return EXIT_SUCCESS;
 }
 
 void PrintUsage() {
-	printf("USAGE: Project1.exe <s/c> <port>\n");
+	printf("USAGE: assigment1 <s/c> <port>\n");
 	exit(1);
 }
 
@@ -205,7 +216,7 @@ void HandleUserInput(Runnable *thisProgram, char* userInput) {
 	vector<char*>* tokens = tokenize(userInput, delim);
 	int inputSize = tokens->size();
 	if(inputSize < 1) {
-		printf("\nUnable to process command\n");
+		printf("\nInvalid command or file name ;)\n");
 		return;
 	}
 

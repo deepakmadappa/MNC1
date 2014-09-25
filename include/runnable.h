@@ -4,18 +4,18 @@
  *  Created on: Sep 14, 2014
  *      Author: adminuser
  */
-
-#include <vector>
-#include "host.h"
-#include <list>
-
 #ifndef RUNNABLE_H_
 #define RUNNABLE_H_
 
 
+#include <vector>
+#include "host.h"
+#include <list>
+#include <time.h>
+
 const int STDIN = 0;
 const int MAX_CLIENTS = 4;
-const int PACKET_SIZE = 512;
+const int PACKET_SIZE = 2048;
 
 class Runnable
 {
@@ -43,7 +43,7 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets) = 0;
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) = 0;
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) = 0;
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket) = 0;
 
 	virtual ~Runnable();
 };
@@ -60,7 +60,7 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket);
 	virtual ~Server();
 };
 
@@ -87,12 +87,12 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket);
 	void HandleRegisterResponse(char*);
-	void HandleUploadRequest(char* message, int sd);
-	void HandleContinueDownload(char* message, unsigned long* sdDetails);
-	void HandleDownload(char *strConnection, char *strFile);
-	void HandleDownloadRequest(char *message, int sd);
+	void HandleTransferRequest(char* message, int sd);
+	void HandlePacketOnSocketWithOngoingTransfer(char* message, unsigned long* sdDetails, int socketIndex, struct timeval* timeTakenForThisPacket);
+	void HandleDownloadCommandFromUser(char *strConnection, char *strFile);
+	void HandleDownloadRequestFromOtherSide(char *message, int sd);
 	virtual ~Client();
 };
 
