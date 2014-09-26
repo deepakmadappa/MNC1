@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 	int sockListenNew , addrlen , client_socket[MAX_CLIENTS];
 
 	if(bIsServerMode)
-		thisProgram = new Server(port);
+		thisProgram = new Server(port, client_socket);
 	else
 		thisProgram = new Client(port, client_socket);
 

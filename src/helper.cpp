@@ -159,7 +159,7 @@ int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/
 		inet_pton(AF_INET, ipstr, &sa.sin_addr);
 
 		if(err = getnameinfo((struct sockaddr*)&sa, sizeof(sa), host, 50, serv, 50, 0)) {
-			printf("getnameinfo failed: %d%s\n", err,ipstr);
+			printf("getnameinfo failed: %d\n", err);
 			exit(1);
 		}
 	}

@@ -51,9 +51,10 @@ public:
 class Server: public Runnable
 {
 	std::list<Host*> *mClientList;
+	int* mSocketList;
 
 public:
-	Server(int port);
+	Server(int port, int*);
 
 	void List(void) const;
 	virtual void DisplayHelp() const;
@@ -61,6 +62,7 @@ public:
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
 	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
+	virtual void Statistics();
 	virtual ~Server();
 };
 
@@ -88,7 +90,7 @@ public:
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
 	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
-	void HandleRegisterResponse(char*);
+	int HandleRegisterResponse(char*);
 	void HandleTransferRequest(char* message, int sd);
 	void HandlePacketOnSocketWithOngoingTransfer(char* message, unsigned long* sdDetails, int socketIndex);
 	void HandleDownloadCommandFromUser(char *strConnection, char *strFile);

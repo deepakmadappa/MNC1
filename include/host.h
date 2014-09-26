@@ -27,7 +27,7 @@ public:
 	}
 
 	bool IsEqual(Host *otherHost) {
-		if( (strcmp(otherHost->mIP, mIP) == 0) && (strcmp(otherHost->mPort, mPort) == 0) ){
+		if( ((strcmp(otherHost->mIP, mIP) == 0) || strcmp(otherHost->mHostname, mHostname) == 0) && (strcmp(otherHost->mPort, mPort) == 0) ){
 			return true;
 		}
 		return false;

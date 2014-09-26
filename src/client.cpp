@@ -63,7 +63,8 @@ void Client::Register(char* strIP, char* strPort) {
 	char readBuffer[PACKET_SIZE + 1];
 	TCPRecv(serverSocket, readBuffer, PACKET_SIZE, true);
 	readBuffer[PACKET_SIZE] = '\0';
-	HandleRegisterResponse(readBuffer);
+	if(HandleRegisterResponse(readBuffer))
+		return;
 	char *cpyDest = new char[strlen(strIP)];
 	char *cpyPort = new char[strlen(strPort)];
 	strcpy(cpyDest, strIP);
@@ -80,7 +81,7 @@ void Client::Register(char* strIP, char* strPort) {
 			break;
 		}
 	}
-	mConnectionList->push_back(server);
+	mConnectionList->push_front(server);
 }
 
 void Client::Connect(char* strDestination, char* strPort) {
@@ -89,7 +90,23 @@ void Client::Connect(char* strDestination, char* strPort) {
 		printf("\nInvalid port number\n");
 		return;
 	}
-	//TODO: add code to check if the connection exists in the list
+
+	//check if the connection exists in the list
+	Host *h = NULL;
+	bool bExistsInList = false;
+	for (int i=0; i < mClientsList->size(); i++)
+	{
+		h = mClientsList->at(i);
+		if(((strcmp(strDestination, h->mIP) ==0) || (strcmp(strDestination, h->mHostname) == 0)) && strcmp(strPort, h->mPort)==0) {
+			bExistsInList = true;
+			break;
+		}
+	}
+	if(!bExistsInList) {
+		printf("\nThe host doesn't exist int he ServerList, please verify the details again\n");
+		return;
+	}
+
 	char *hostName = new char[100];
 	int peerSocket = TCPConnect(strDestination, nPort, false, hostName);
 	if(peerSocket == -1) {
@@ -391,18 +408,18 @@ void Client::HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) 
 	}
 }
 
-void Client::HandleRegisterResponse(char* responseReceived) {
+int Client::HandleRegisterResponse(char* responseReceived) {
 	vector<char*>* tokens = tokenize(responseReceived, "|");
 	int nTokens = tokens->size();
 	if(strcmp(tokens->at(0), "d")==0) {
 		printf("\nYou have already registered\n");
 		delete tokens;
-		return;
+		return 1;
 	}
 	if((nTokens - 1) % 3 != 0) {
 		printf("\nReceived odd connection pair\n");
 		delete tokens;
-		return;
+		return 1;
 	}
 	mClientsList->clear();
 	char port[10];
@@ -410,11 +427,13 @@ void Client::HandleRegisterResponse(char* responseReceived) {
 	for ( int i=1; i < nTokens; i+=3 ) {
 		char* recvhost = tokens->at(i+1);
 		char* recvPort = tokens->at(i + 2);
-		if((strcmp(recvhost, mHostname) == 0) && (strcmp(recvPort, port) == 0))
-			continue;
+		if((strcmp(recvhost, mHostname) == 0 || strcmp(tokens->at(i), mIP) == 0) && (strcmp(recvPort, port) == 0))
+			continue;	//this is your own details skip it
 		mClientsList->push_back(new Host(tokens->at(i), tokens->at(i + 2), tokens->at(i + 1)));
 	}
+	printf("\nReceived a list from server");
 	PrintVector(mClientsList);
+	return 0;
 }
 
 void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
@@ -441,10 +460,13 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 			break;
 		case 'u':
 			HandleTransferRequest(message, clientSockets[socketIindex]);
+			break;
 		case 'd':
 			HandleDownloadRequestFromOtherSide(message, clientSockets[socketIindex]);
+			break;
 		case 'n':
 			HandleStatisticsRequestFromServer(clientSockets[socketIindex]);
+			break;
 		default:	//oh oh
 			break;
 		}
@@ -455,9 +477,11 @@ void Client::HandleStatisticsRequestFromServer(int sd) {
 	Host *host = NULL;
 	int connectionIndex = 1;
 	char returnMessage[PACKET_SIZE] = {'\0'};
+	printf("received stat request\n");
 	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
 		host = (*it);
 		if(connectionIndex == 1) {
+			connectionIndex++;
 			continue; //ignore server
 		}
 		if(host->mnDownloads != 0 || host->mnUploads !=0) {
@@ -466,6 +490,7 @@ void Client::HandleStatisticsRequestFromServer(int sd) {
 			sprintf(returnMessage, "%s|%-35s%14d%17lu%17d%15lu", returnMessage, host->mHostname, host->mnUploads, mUploadSpeed, host->mnDownloads, mDownloadSpeed);
 		}
 	}
+	printf("%s", returnMessage);
 	if(TCPSend(sd, returnMessage, PACKET_SIZE, false)) {
 		printf("Sending Statistics to server Failed\n");
 		return;
