@@ -178,8 +178,9 @@ void Client::Exit() {
  * The application is going to block on this function till the whole file is transferred in both cases
  */
 void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
+	Host *host = 0;
+
 	if(sd == 0) {
-		Host *host = 0;
 		int nConnectionID = strtol(strConnectionID, NULL, 10);
 		int connectionIndex = 1;
 		if(nConnectionID == 0) {
@@ -199,6 +200,11 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 			return;
 		}
 		sd = mSocketList[host->mSocketIndex];
+	}
+	struct timeval start, end;
+	if(gettimeofday(&start, NULL) == -1) {
+		perror("Getting time of day failed");
+		exit(1);
 	}
 	int fd = open(strFileName, O_RDONLY);
 	if(fd <= 0) {
@@ -225,7 +231,28 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 			return;
 		}
 	}
-	printf("\nTransfer complete\n");
+	if(gettimeofday(&end, NULL) == -1) {
+		perror("Getting time of day failed");
+		exit(1);
+	}
+	if(host == NULL) {
+		for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
+			host = (*it);
+			if(mSocketList[host->mSocketIndex] == sd)
+				break;
+		}
+	}
+	unsigned long totalTime = (end.tv_sec - start.tv_sec);
+	unsigned long rate = (fileSize * 8) / ((totalTime == 0)? 1: totalTime );	//we dont want divide by zero now
+
+	printf("\nTx:%s -> %s, File Size: %lu, Time Taken %lu, Tx Rate: %lu\n", mHostname, host->mHostname, fileSize, totalTime, rate);
+
+	//add details to maintain statistics
+	host->mTotalBytesUploaded += fileSize;
+	host->mTotalSendTime += totalTime;
+	host->mnUploads++;
+
+
 }
 
 void Client::Download(char* strConnectionID1, char* strFile1, char* strConnectionID2 /*=NULL*/, char* strFile2 /*=NULL*/, char* strConnectionID3 /*=NULL*/, char* strFile3 /*=NULL*/) {
@@ -263,19 +290,35 @@ void Client::HandleDownloadCommandFromUser(char *strConnectionID, char *strFile)
 	sprintf(buffer,"d|%s", strFile);
 	if(TCPSend(sd, buffer, PACKET_SIZE, false)) {
 		printf("\nDownload Request failed\n");
+		return;
 	}
 	if(TCPRecv(sd, buffer, PACKET_SIZE, false)) {
 		printf("\nDownload request failed\n");
+		return;
 	}
 	if(buffer[0] != 'u') {
-		printf("\nDownload request rejected\n");
+		printf("\nDownload request rejected, please check the file name\n");
 	}
 	HandleTransferRequest(buffer, sd);
 }
 
 void Client::Statistics() {
 	printf("\nClient Statistics\n");
+	Host *host = NULL;
+	int connectionIndex = 1;
+	printf("%s                          %s %s %s %s\n", "Host Name", "Total Uploads", "Avg Upload Spd(b/s)", "Total Downloads", "Total Download Speed (b/s)");
+	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
+		host = (*it);
+		//if(connectionIndex == 1)
+		//	continue; //skip the server
+		if(host->mnDownloads != 0 || host->mnUploads != 0) {
+			unsigned long mDownloadSpeed = (host->mnDownloads != 0 && host->mTotalReceiveTime != 0)? host->mTotalBytesDownloaded * 8 / host->mTotalReceiveTime: 0;
+			unsigned long mUploadSpeed = (host->mnUploads != 0 && host->mTotalSendTime != 0)? host->mTotalBytesUploaded  * 8 / host->mTotalSendTime: 0;
+			printf("%-35s%14d%17lu%17d%15lu\n", host->mHostname, host->mnUploads, mUploadSpeed, host->mnDownloads, mDownloadSpeed);
+		}
+	}
 }
+
 
 /*Function accepts new connect requests and reject if connection are full or add to connection list if not */
 void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
@@ -374,7 +417,7 @@ void Client::HandleRegisterResponse(char* responseReceived) {
 	PrintVector(mClientsList);
 }
 
-void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket) {
+void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
 	//Handle current downloads here
 	int sd = clientSockets[socketIindex];
 	bool bFound  = false;
@@ -387,7 +430,7 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 		}
 	}
 	if(bFound) {
-		HandlePacketOnSocketWithOngoingTransfer(message, sdDetails, socketIindex, timeTakenForThisPacket);
+		HandlePacketOnSocketWithOngoingTransfer(message, sdDetails, socketIindex);
 		return;
 	}
 	//
@@ -400,9 +443,32 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 			HandleTransferRequest(message, clientSockets[socketIindex]);
 		case 'd':
 			HandleDownloadRequestFromOtherSide(message, clientSockets[socketIindex]);
+		case 'n':
+			HandleStatisticsRequestFromServer(clientSockets[socketIindex]);
 		default:	//oh oh
 			break;
 		}
+	}
+}
+
+void Client::HandleStatisticsRequestFromServer(int sd) {
+	Host *host = NULL;
+	int connectionIndex = 1;
+	char returnMessage[PACKET_SIZE] = {'\0'};
+	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
+		host = (*it);
+		if(connectionIndex == 1) {
+			continue; //ignore server
+		}
+		if(host->mnDownloads != 0 || host->mnUploads !=0) {
+			unsigned long mDownloadSpeed = (host->mnDownloads != 0 && host->mTotalReceiveTime != 0)? host->mTotalBytesDownloaded * 8 / host->mTotalReceiveTime: 0;
+			unsigned long mUploadSpeed = (host->mnUploads != 0 && host->mTotalSendTime != 0)? host->mTotalBytesUploaded  * 8 / host->mTotalSendTime: 0;
+			sprintf(returnMessage, "%s|%-35s%14d%17lu%17d%15lu", returnMessage, host->mHostname, host->mnUploads, mUploadSpeed, host->mnDownloads, mDownloadSpeed);
+		}
+	}
+	if(TCPSend(sd, returnMessage, PACKET_SIZE, false)) {
+		printf("Sending Statistics to server Failed\n");
+		return;
 	}
 }
 
@@ -413,6 +479,11 @@ void Client::HandleTransferRequest(char* message, int sd) {
 		printf("\nRequest Incorrect\n");
 		return;
 	}
+	struct timeval *time= new struct timeval();
+	if(gettimeofday(time, NULL) == -1) {
+		perror("Getting time of day failed");
+		exit(1);
+	}
 	int fd = open(tokens->at(2), O_CREAT|O_WRONLY|O_TRUNC, 00777);
 	if(fd <= 0) {
 		printf("\nOpening file failed because %d\n", errno);
@@ -420,9 +491,7 @@ void Client::HandleTransferRequest(char* message, int sd) {
 	}
 	char *fileName = new char[strlen(tokens->at(2)) + 1];
 	strcpy(fileName, tokens->at(2));
-	struct timeval *time= new struct timeval();
-	time->tv_sec = 0;
-	time->tv_usec = 0;
+
 	unsigned long *socketDownloadDetails = new unsigned long[6];
 	socketDownloadDetails[0] = sd;
 	socketDownloadDetails[1] = fd;
@@ -445,22 +514,13 @@ void Client::HandleDownloadRequestFromOtherSide(char *message, int sd) {
 	Upload(NULL, tokens->at(1), sd);
 }
 
-void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned long* socketDownloadDetails, int socketIndex, struct timeval* timeTakenForThisPacket) {
+void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned long* socketDownloadDetails, int socketIndex) {
 	int bytesToWrite = (socketDownloadDetails[2] > PACKET_SIZE )? PACKET_SIZE: socketDownloadDetails[2];	//if byresRemaining is greater than PACKET_SIZE, write packet size and keep going else we must stop as this is the last packet
 	int fd = socketDownloadDetails[1];
-	struct timeval writeStart, writeEnd;
-	if(gettimeofday(&writeStart, NULL) == -1) {
-		perror("Getting time of day failed");
-		exit(EXIT_FAILURE);
-	}
+	struct timeval end, *start;
+
 	int bytesWritten = write(fd, message, bytesToWrite);
-	if(gettimeofday(&writeEnd, NULL) == -1) {
-		perror("Getting time of day failed");
-		exit(EXIT_FAILURE);
-	}
-	struct timeval* time = (struct timeval*) socketDownloadDetails[5];
-	time->tv_sec = time->tv_sec + timeTakenForThisPacket->tv_sec + (writeEnd.tv_sec - writeStart.tv_sec);
-	time->tv_usec = time->tv_usec + timeTakenForThisPacket->tv_usec + (writeEnd.tv_usec - writeStart.tv_usec);
+
 
 	if(bytesWritten <= 0) {
 		printf("\nI didn't write anything because :%d\n", errno);
@@ -468,6 +528,7 @@ void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned lon
 	if(socketDownloadDetails[2] > PACKET_SIZE) {
 		socketDownloadDetails[2] -= PACKET_SIZE; //just decrement remaning bytes and continue
 	} else {
+		//last packet has arrived, wrap up the transfer
 		Host *host = NULL;
 		for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
 			host = (*it);
@@ -475,16 +536,26 @@ void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned lon
 				break;
 		}
 		//download finished close the file and get rid of sdDetail from list
-		struct timeval* total = (struct timeval*) socketDownloadDetails[5];
 		unsigned long fileSize = socketDownloadDetails[3];
-		unsigned long totalTime = total->tv_sec + (total->tv_usec / 1000000);
-		unsigned long rate = (fileSize * 8) / ((totalTime == 0)?1:total->tv_sec );	//we dont want divide by zero now
 		printf("File: %s transfer complete", (char*)socketDownloadDetails[4]);
-		printf("\nRx: %s->%s, File Size: %lu Bytes, Time Taken: %lu seconds, Tx Rate %lu bits/second\n", host->mHostname, this->mHostname, fileSize, total->tv_sec, rate);
+		start = (struct timeval*) socketDownloadDetails[5];
+		if(gettimeofday(&end, NULL) == -1) {
+			perror("Getting time of day failed");
+			exit(1);
+		}
+		unsigned long totalTime = (end.tv_sec - start->tv_sec);
+		unsigned long rate = (fileSize * 8) / ((totalTime == 0)?1:totalTime );	//we dont want divide by zero now
+		printf("\nRx: %s->%s, File Size: %lu Bytes, Time Taken: %lu seconds, Tx Rate %lu bits/second\n", host->mHostname, this->mHostname, fileSize, totalTime, rate);
 		close(fd);
 		mCurrentDownloadList->remove(socketDownloadDetails);
+		delete (char*)socketDownloadDetails[4];
+		delete (struct timeval*) socketDownloadDetails[5];
 		delete socketDownloadDetails;
-		//do all your download timing stuff here
+
+		//Update host details for STATISTICS
+		host->mnDownloads++;
+		host->mTotalBytesDownloaded += fileSize;
+		host->mTotalReceiveTime += totalTime;
 	}
 }
 

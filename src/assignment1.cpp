@@ -134,8 +134,8 @@ int main(int argc, char* argv[]) {
 				max_sd = sd;
 		}
 
-		printf(">>");
-		fflush(stdout);
+		//printf(">>");
+		//fflush(stdout);
 		//wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
 		int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
 		if ((activity < 0) && (errno!=EINTR))
@@ -151,7 +151,6 @@ int main(int argc, char* argv[]) {
 			HandleUserInput(thisProgram, buffer);
 			FD_CLR(STDIN, &readfds);
 		}
-		cout<<endl;
 		//If something happened on the master socket , then its an incoming connection
 		if (FD_ISSET(sockListenNew, &readfds))
 		{
@@ -166,18 +165,11 @@ int main(int argc, char* argv[]) {
 			int bytesRead=0;
 			if (FD_ISSET(sd , &readfds))
 			{
-				struct timeval startTime, endTime, *timeTakenForThisPacket = new struct timeval();
-				if(gettimeofday(&startTime, NULL) == -1) {
-					perror("Getting time of day failed");
-					exit(EXIT_FAILURE);
-				}
+				//struct timeval startTime, endTime, *timeTakenForThisPacket = new struct timeval();
 				bytesRead = read( sd , message, PACKET_SIZE);
-				if(gettimeofday(&endTime, NULL) == -1) {
-					perror("Getting time of day failed");
-					exit(EXIT_FAILURE);
-				}
-				timeTakenForThisPacket->tv_sec = endTime.tv_sec - startTime.tv_sec;
-				timeTakenForThisPacket->tv_usec = endTime.tv_usec - startTime.tv_usec;
+
+				//timeTakenForThisPacket->tv_sec = endTime.tv_sec - startTime.tv_sec;
+				//timeTakenForThisPacket->tv_usec = endTime.tv_usec - startTime.tv_usec;
 				//Check if it was for closing , and also read the incoming message
 				if (bytesRead == 0)
 				{
@@ -195,10 +187,10 @@ int main(int argc, char* argv[]) {
 				{
 					//set the string terminating NULL byte on the end of the data read
 					message[bytesRead] = '\0';
-					thisProgram->HandleActivityOnConnection(client_socket, i, message, timeTakenForThisPacket);
+					thisProgram->HandleActivityOnConnection(client_socket, i, message);
 					//send(sd , message , strlen(message) , 0 );
 				}
-				delete timeTakenForThisPacket;
+
 			}
 		}
 	}
@@ -211,7 +203,6 @@ void PrintUsage() {
 }
 
 void HandleUserInput(Runnable *thisProgram, char* userInput) {
-	printf("\n%s\n",userInput);
 	char *delim = (char*)" ";
 	vector<char*>* tokens = tokenize(userInput, delim);
 	int inputSize = tokens->size();

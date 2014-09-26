@@ -43,7 +43,7 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets) = 0;
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) = 0;
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket) = 0;
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) = 0;
 
 	virtual ~Runnable();
 };
@@ -60,7 +60,7 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket);
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
 	virtual ~Server();
 };
 
@@ -87,12 +87,14 @@ public:
 
 	virtual void AcceptNewConnection(int socketListner, int* clientSockets);
 	virtual void HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd);
-	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message, struct timeval* timeTakenForThisPacket);
+	virtual void HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message);
 	void HandleRegisterResponse(char*);
 	void HandleTransferRequest(char* message, int sd);
-	void HandlePacketOnSocketWithOngoingTransfer(char* message, unsigned long* sdDetails, int socketIndex, struct timeval* timeTakenForThisPacket);
+	void HandlePacketOnSocketWithOngoingTransfer(char* message, unsigned long* sdDetails, int socketIndex);
 	void HandleDownloadCommandFromUser(char *strConnection, char *strFile);
 	void HandleDownloadRequestFromOtherSide(char *message, int sd);
+	void PrintStatistics(Host* host);
+	void HandleStatisticsRequestFromServer(int sd);
 	virtual ~Client();
 };
 

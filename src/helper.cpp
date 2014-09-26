@@ -111,50 +111,59 @@ char* ToUpper(char* input) {
 }
 
 int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/) {
-	struct sockaddr_in address;
-	//create an UDP socket
-	int tcpSocket;
-	if( (tcpSocket = socket(AF_INET , SOCK_STREAM , 0)) == 0)
-	{
-		perror("socket failed");
-		if(exitOnFail)
-			exit(EXIT_FAILURE);
-		return -1;
+	//code  copied from http://linux.die.net/man/3/getaddrinfo and http://beej.us/guide/bgnet/output/html/multipage/syscalls.html
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	int sd,s;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;    /* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;          /* Any protocol */
+	char strPort[10];
+	sprintf(strPort, "%d", nPort);
+
+	s = getaddrinfo(IP, strPort, &hints, &result);
+	if (s != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+		exit(EXIT_FAILURE);
 	}
 
-	memset(&address, 0, sizeof(address));
-	address.sin_family = AF_INET;
+	/* getaddrinfo() returns a list of address structures.
+	       Try each address until we successfully connect(2).
+	       If socket(2) (or connect(2)) fails, we (close the socket
+	       and) try the next address. */
 
-	int err = inet_pton(AF_INET, IP, &address.sin_addr.s_addr);
-	if(err == 0) {
-		perror("inet_pton() failed - Invalid address string");
-		if(exitOnFail)
-			exit(EXIT_FAILURE);
-		return -1;
-	}
-	else if(err < 0) {
-		perror("inet_pton() failed");
-		if(exitOnFail)
-			exit(EXIT_FAILURE);
-		return -1;
-	}
-	address.sin_port = htons(nPort);
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		sd = socket(PF_INET, SOCK_STREAM,
+				0);
+		if (sd == -1)
+			continue;
 
-	if( connect(tcpSocket, (struct sockaddr *)&address, sizeof(address))) {
-		perror("connect failed\n");
-		if(exitOnFail)
-			exit(EXIT_FAILURE);
-		return -1;
+		if (connect(sd, rp->ai_addr, rp->ai_addrlen) != -1)
+			break;                  /* Success */
+
+		close(sd);
 	}
 	if(outHostName!=NULL) {
 		char *host = outHostName;
 		char serv[50];
-		if(getnameinfo((struct sockaddr*)&address, sizeof(address), host, 50, serv, 50, 0)) {
-			perror("getnameinfo failed\n");
+		char ipstr[40];
+		int err;
+		struct sockaddr_in *ipv4 = (struct sockaddr_in *)rp->ai_addr;
+		void*  addr = &(ipv4->sin_addr);
+		inet_ntop(rp->ai_family, addr, ipstr, sizeof ipstr);
+		struct sockaddr_in sa;
+		sa.sin_family = AF_INET;
+		//I have no idea why I have to do inet_ntop and back but it just wouldn't work without it
+		inet_pton(AF_INET, ipstr, &sa.sin_addr);
+
+		if(err = getnameinfo((struct sockaddr*)&sa, sizeof(sa), host, 50, serv, 50, 0)) {
+			printf("getnameinfo failed: %d%s\n", err,ipstr);
 			exit(1);
 		}
 	}
-	return tcpSocket;
+	return sd;
 }
 
 int TCPSend(int sd, const char* sendBuffer, int length, bool exitOnFail) {

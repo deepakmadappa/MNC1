@@ -17,9 +17,13 @@ public:
 	char* mPort;
 	char* mHostname;
 	int mSocketIndex;
+	int mnUploads, mnDownloads;
+	unsigned long mTotalBytesDownloaded, mTotalBytesUploaded;
+	unsigned long mTotalReceiveTime, mTotalSendTime;
 
 	Host(char* ip, char* port, char *hostname): mIP(ip), mPort(port),mHostname(hostname),mSocketIndex(0) {
-
+		mnUploads = mnDownloads = 0;
+		mTotalBytesDownloaded = mTotalBytesUploaded = mTotalReceiveTime = mTotalSendTime = 0;
 	}
 
 	bool IsEqual(Host *otherHost) {
