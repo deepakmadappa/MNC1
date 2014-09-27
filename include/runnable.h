@@ -23,6 +23,9 @@ protected:
 	int mPort;
 	char *mIP;
 	char *mHostname;
+public:
+	bool g_bCurrentlyDownloading;
+
 protected:
 	Runnable();
 public:
@@ -70,6 +73,7 @@ class Client:public Runnable
 {
 	std::vector<Host*>* mClientsList;
 	std::list<Host*>* mConnectionList;
+	std::list<Host*>* mDisconnectedHostList;
 	std::list<unsigned long*>* mCurrentDownloadList;	//Holds an array of sd, fd, and remaining file size
 	int *mSocketList;
 	int mnConnections;
@@ -97,6 +101,7 @@ public:
 	void HandleDownloadRequestFromOtherSide(char *message, int sd);
 	void PrintStatistics(Host* host);
 	void HandleStatisticsRequestFromServer(int sd);
+	Host* FindPreviousConnection(Host* );
 	virtual ~Client();
 };
 

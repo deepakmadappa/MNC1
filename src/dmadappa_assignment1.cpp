@@ -25,7 +25,6 @@ void PrintUsage();
 void HandleUserInput(Runnable*, char*);
 using namespace std;
 
-
 int main(int argc, char* argv[]) {
 	bool bIsServerMode = true;
 	Runnable *thisProgram = NULL;
@@ -133,9 +132,10 @@ int main(int argc, char* argv[]) {
 			if(sd > max_sd)
 				max_sd = sd;
 		}
-
-		//printf(">>");
-		//fflush(stdout);
+		/*if(!thisProgram->g_bCurrentlyDownloading) {	//there is some problem with this logic I see >> printed on rare occations during downloads
+			printf(">>");
+			fflush(stdout);
+		}*/
 		//wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
 		int activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);
 		if ((activity < 0) && (errno!=EINTR))

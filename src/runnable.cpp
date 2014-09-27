@@ -11,10 +11,11 @@
 
 Runnable::Runnable() {
 	mIP = GetMyIP(&mHostname);
+	g_bCurrentlyDownloading = false;
 }
 void Runnable::DisplayCreator(void) const {
 	printf("Deepak Madappa, dmadappa, dmadappa@buffalo.edu\n");
-	printf("I have read and understood the course academic integrity policy located at http://www.cse.buffalo.edu/faculty/dimitrio/courses/cse4589_f14/index.html#integrity");
+	printf("I have read and understood the course academic integrity policy located at http://www.cse.buffalo.edu/faculty/dimitrio/courses/cse4589_f14/index.html#integrity\n");
 }
 
 void Runnable::DisplayHelp(void) const {

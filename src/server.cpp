@@ -27,6 +27,10 @@ Server::Server(int port, int* socketList) {
 	mClientList = new list<Host*>();
 }
 
+
+/**
+ * Handles activiy on listner socket
+ */
 void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	int new_socket;
 	struct sockaddr_in their_addr;
@@ -94,6 +98,9 @@ void Server::AcceptNewConnection(int socketListner, int* newClient) {
 	}
 }
 
+/**
+ * There was a read of 0 bytes on a sd remove this client and tell everyone
+ */
 void Server::HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) {
 	Host *host = 0;
 	bool bFound = false;
@@ -125,17 +132,24 @@ void Server::HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) 
 }
 
 void Server::HandleActivityOnConnection(int *clientSockets, int socketIindex, char* message) {
-	//No one talks to server at all.... So sad.
+	//No one ever talks to the server.... So sad.
+	printf("\nYou talk'in to me?!\n");
 }
 
 void Server::DisplayHelp() const {
-
+	printf("CREATOR: displays disclaimer\n\
+	HELP: Deja vu\n\
+	MYIP: Displays my ip\n\
+	MYPORT: Displayes my port\n\
+	LIST: Lists all the connections\n\
+	STATISTICS: Diplays preious transfer information\n");
 }
 
 void Server::List() const {
 	PrintClientList(mClientList);
 }
 
+//Displays statistics;
 void Server::Statistics() {
 	char message[PACKET_SIZE] = "n|statistics";
 	char response[PACKET_SIZE];

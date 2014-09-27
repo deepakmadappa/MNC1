@@ -29,9 +29,23 @@ Client::Client(int port, int* socketlist):Runnable(), mnConnections(0) {
 	mConnectionList = new std::list<Host*>();
 	mSocketList = socketlist;
 	mCurrentDownloadList = new std::list<unsigned long*>();
+	mDisconnectedHostList = new std::list<Host*>();
 }
 
 void Client::DisplayHelp() const {
+	//writing printf statements :(
+	printf("CREATOR: displays disclaimer\n\
+	HELP: Deja vu\n\
+	MYIP: Displays my ip\n\
+	MYPORT: Displayes my port\n\
+	REGISTER <server IP> <port_no>: Registers with server\n\
+	CONNECT <destination> <port no>: Connects to peer\n\
+	LIST: Lists all the connections\n\
+	TERMINATE <connection id>: Terminates a connection\n\
+	EXIT: Terminates all connections and dies, good bye cruel world\n\
+	UPLOAD <connection id> <file name>: uploads the file to corresponding connection\n\
+	DOWNLOAD <connection id 1> <file1> <connection id 2> <file2> <connection id 3> <file3>: Downloads files from corresponding connections\n\
+	STATISTICS: Diplays preious transfer information\n");
 
 }
 
@@ -52,9 +66,16 @@ void Client::Register(char* strIP, char* strPort) {
 		printf("\nInvalid port number\n");
 		return;
 	}
+
+	if(((strcmp(strIP, mIP) == 0) || (strcmp(strIP, mHostname) == 0)) && nPort == mPort) {
+		printf("\nStop trying to talk to youself\n");
+		return;
+	}
 	char *hostName = new char[100];
-	int serverSocket = TCPConnect(strIP, nPort, false, hostName);
+	char *hostIP = new char[15];
+	int serverSocket = TCPConnect(strIP, nPort, false, hostName, hostIP);
 	if(serverSocket == -1) {
+		printf("\nUnable to connect to the destination, please verify the details\n");
 		return;
 	}
 	char writebuffer[10];
@@ -65,11 +86,9 @@ void Client::Register(char* strIP, char* strPort) {
 	readBuffer[PACKET_SIZE] = '\0';
 	if(HandleRegisterResponse(readBuffer))
 		return;
-	char *cpyDest = new char[strlen(strIP)];
 	char *cpyPort = new char[strlen(strPort)];
-	strcpy(cpyDest, strIP);
 	strcpy(cpyPort, strPort);
-	Host *server = new Host(cpyDest, cpyPort, hostName);
+	Host *server = new Host(hostIP, cpyPort, hostName);
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		//if position is empty
@@ -90,9 +109,22 @@ void Client::Connect(char* strDestination, char* strPort) {
 		printf("\nInvalid port number\n");
 		return;
 	}
+	if(((strcmp(strDestination, mIP) == 0) || (strcmp(strDestination, mHostname) == 0)) && nPort == mPort) {
+		printf("\nStop trying to talk to youself\n");
+		return;
+	}
+	Host *h = NULL;
+	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++)
+	{
+		h = (*it);
+		if(((strcmp(strDestination, h->mIP) == 0) || (strcmp(strDestination, h->mHostname) == 0)) && strcmp(strPort, h->mPort) == 0) {
+			printf("\nWe are already connected, stop being needy\n");
+			return;
+		}
+	}
 
 	//check if the connection exists in the list
-	Host *h = NULL;
+
 	bool bExistsInList = false;
 	for (int i=0; i < mClientsList->size(); i++)
 	{
@@ -108,7 +140,8 @@ void Client::Connect(char* strDestination, char* strPort) {
 	}
 
 	char *hostName = new char[100];
-	int peerSocket = TCPConnect(strDestination, nPort, false, hostName);
+	char *hostIP = new char[15];
+	int peerSocket = TCPConnect(strDestination, nPort, false, hostName, hostIP);
 	if(peerSocket == -1) {
 		return;
 	}
@@ -126,11 +159,14 @@ void Client::Connect(char* strDestination, char* strPort) {
 		return;
 	}
 	printf("\nConnected to %s\n", strDestination);
-	char *cpyDest = new char[strlen(strDestination)];
 	char *cpyPort = new char[strlen(strPort)];
-	strcpy(cpyDest, strDestination);
 	strcpy(cpyPort, strPort);
-	Host *host = new Host(cpyDest,cpyPort, hostName);
+	Host *host = new Host(hostIP,cpyPort, hostName);
+	Host *disconnectedHost = NULL;
+	if( (disconnectedHost = FindPreviousConnection(host)) != NULL) {
+		delete host;
+		host = disconnectedHost;
+	}
 
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
@@ -174,7 +210,7 @@ void Client::Terminate (char* strConnectionID) {
 	close(closeSd);
 	mConnectionList->remove(host);
 	mnConnections--;
-	delete host;
+	mDisconnectedHostList->push_back(host);
 }
 
 void Client::Exit() {
@@ -233,6 +269,7 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 		return;
 	}
 	off_t fileSize = lseek(fd, 0, SEEK_END);
+	printf("\nSending file: %s\n", strFileName);
 	lseek(fd, 0, SEEK_SET);
 	char firstPacket[PACKET_SIZE];
 	vector<char*> *fileTokens = tokenize(strFileName,"/");
@@ -259,10 +296,11 @@ void Client::Upload(char* strConnectionID, char* strFileName, int sd) const{
 				break;
 		}
 	}
-	unsigned long totalTime = (end.tv_sec - start.tv_sec);
-	unsigned long rate = (fileSize * 8) / ((totalTime == 0)? 1: totalTime );	//we dont want divide by zero now
-
-	printf("\nTx:%s -> %s, File Size: %lu, Time Taken %lu, Tx Rate: %lu\n", mHostname, host->mHostname, fileSize, totalTime, rate);
+	unsigned long totalTime = (end.tv_sec - start.tv_sec) * 1000 + ((end.tv_usec - start.tv_usec)/1000);
+	//unsigned long rate = (fileSize * 8 * 1000) / ((totalTime == 0)?1:totalTime );	//we dont want divide by zero now
+	double totalTimeInSec = (double)totalTime / (double)1000.0;
+	double rate = ((double)(fileSize * 8))/((totalTimeInSec == 0)?1:totalTimeInSec);
+	printf("\nTx : %s -> %s, File Size: %lu Bytes, Time Taken: %f seconds, Tx Rate: %f bits/second\n", this->mHostname, host->mHostname, fileSize, totalTimeInSec, rate);
 
 	//add details to maintain statistics
 	host->mTotalBytesUploaded += fileSize;
@@ -286,7 +324,7 @@ void Client::HandleDownloadCommandFromUser(char *strConnectionID, char *strFile)
 	Host *host = 0;
 	int nConnectionID = strtol(strConnectionID, NULL, 10);
 	int connectionIndex = 1;
-	if(nConnectionID == 0) {
+	if(nConnectionID == 0 || nConnectionID == 1) {
 		printf("\nInvalid Connection ID\n");
 		return;
 	}
@@ -315,29 +353,46 @@ void Client::HandleDownloadCommandFromUser(char *strConnectionID, char *strFile)
 	}
 	if(buffer[0] != 'u') {
 		printf("\nDownload request rejected, please check the file name\n");
+		return;
 	}
+	printf("\nDownloading file: %s from: %s\n", strFile, host->mHostname);
 	HandleTransferRequest(buffer, sd);
 }
 
 void Client::Statistics() {
 	printf("\nClient Statistics\n");
 	Host *host = NULL;
-	int connectionIndex = 1;
 	printf("%s                          %s %s %s %s\n", "Host Name", "Total Uploads", "Avg Upload Spd(b/s)", "Total Downloads", "Total Download Speed (b/s)");
 	for (std::list<Host*>::iterator it = mConnectionList->begin(); it != mConnectionList->end(); it++) {
 		host = (*it);
 		//if(connectionIndex == 1)
 		//	continue; //skip the server
 		if(host->mnDownloads != 0 || host->mnUploads != 0) {
-			unsigned long mDownloadSpeed = (host->mnDownloads != 0 && host->mTotalReceiveTime != 0)? host->mTotalBytesDownloaded * 8 / host->mTotalReceiveTime: 0;
-			unsigned long mUploadSpeed = (host->mnUploads != 0 && host->mTotalSendTime != 0)? host->mTotalBytesUploaded  * 8 / host->mTotalSendTime: 0;
-			printf("%-35s%14d%17lu%17d%15lu\n", host->mHostname, host->mnUploads, mUploadSpeed, host->mnDownloads, mDownloadSpeed);
+			double totalUploadTimeinSec = (double)(host->mTotalSendTime) / (double)1000.0;
+			double urate = ((double)(host->mTotalBytesUploaded * 8))/((totalUploadTimeinSec == 0)?1:totalUploadTimeinSec);
+			double totalDownloadTimeinSec = (double)(host->mTotalReceiveTime) / (double)1000.0;
+			double drate = ((double)(host->mTotalBytesDownloaded * 8))/((totalDownloadTimeinSec == 0)?1:totalDownloadTimeinSec);
+			printf("%-35s %14d %12.3f %17d %12.3f\n", host->mHostname, host->mnUploads, urate, host->mnDownloads, drate);
+		}
+	}
+
+	for (std::list<Host*>::iterator it = mDisconnectedHostList->begin(); it != mDisconnectedHostList->end(); it++) {
+		host = (*it);
+		//if(connectionIndex == 1)
+		//	continue; //skip the server
+		if(host->mnDownloads != 0 || host->mnUploads != 0) {
+			double totalUploadTimeinSec = (double)(host->mTotalSendTime) / (double)1000.0;
+			double urate = ((double)(host->mTotalBytesUploaded * 8))/((totalUploadTimeinSec == 0)?1:totalUploadTimeinSec);
+			double totalDownloadTimeinSec = (double)(host->mTotalReceiveTime) / (double)1000.0;
+			double drate = ((double)(host->mTotalBytesDownloaded * 8))/((totalDownloadTimeinSec == 0)?1:totalDownloadTimeinSec);
+			printf("%-35s %14d %12.3f %17d %12.3f\n", host->mHostname, host->mnUploads, urate, host->mnDownloads, drate);
 		}
 	}
 }
 
 
 /*Function accepts new connect requests and reject if connection are full or add to connection list if not */
+//NOTE Register command on self still blocks
 void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 	int new_socket;
 	struct sockaddr_in their_addr;
@@ -349,6 +404,7 @@ void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 	}
 
 	char* theirIP = inet_ntoa(their_addr.sin_addr);
+
 	char *host = new char[50];
 	char serv[50];
 	if(getnameinfo((struct sockaddr*)&their_addr, addr_size, host, 50, serv, 50, 0)) {
@@ -357,6 +413,9 @@ void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 	}
 	char strPort[10];
 	TCPRecv(new_socket, strPort, 10, true);
+	char myPort[10];
+	strPort[9] = '\0';	// stop some malicious guy from typing long port and crashing the system
+	sprintf(myPort, "%d", mPort);
 
 	if(mnConnections >= 3) {
 		TCPSend(new_socket, "0", 2, true);
@@ -368,11 +427,15 @@ void Client::AcceptNewConnection(int socketListner, int* clientSockets) {
 	char *cpyIP = new char[20];
 	char *cpyHostname = new char[50];
 	printf("\nConnected to %s@%s\n", theirIP, strPort);
-	strPort[9] = '\0';	// stop some malicious guy from typing long port and crashing the system
 	strcpy(cpyIP, theirIP);
 	strcpy(cpyPort, strPort);
 	strcpy(cpyHostname, host);
 	Host *newHost = new Host(cpyIP, cpyPort, cpyHostname);
+	Host *disconnectedHost = NULL;
+	if( (disconnectedHost = FindPreviousConnection(newHost)) != NULL) {
+		delete newHost;
+		newHost = disconnectedHost;
+	}
 	for (int i = 0; i < MAX_CLIENTS; i++)
 	{
 		//if position is empty
@@ -405,6 +468,7 @@ void Client::HandleCloseOnOtherEnd(int* clientSockets, int socketIndex, int sd) 
 	} else {
 		mnConnections--;
 		mConnectionList->remove(host);
+		mDisconnectedHostList->push_back(host);
 	}
 }
 
@@ -459,6 +523,7 @@ void Client::HandleActivityOnConnection(int *clientSockets, int socketIindex, ch
 			HandleRegisterResponse(message);
 			break;
 		case 'u':
+			printf("\nPreparing to receive file\n");
 			HandleTransferRequest(message, clientSockets[socketIindex]);
 			break;
 		case 'd':
@@ -485,12 +550,23 @@ void Client::HandleStatisticsRequestFromServer(int sd) {
 			continue; //ignore server
 		}
 		if(host->mnDownloads != 0 || host->mnUploads !=0) {
-			unsigned long mDownloadSpeed = (host->mnDownloads != 0 && host->mTotalReceiveTime != 0)? host->mTotalBytesDownloaded * 8 / host->mTotalReceiveTime: 0;
-			unsigned long mUploadSpeed = (host->mnUploads != 0 && host->mTotalSendTime != 0)? host->mTotalBytesUploaded  * 8 / host->mTotalSendTime: 0;
-			sprintf(returnMessage, "%s|%-35s%14d%17lu%17d%15lu", returnMessage, host->mHostname, host->mnUploads, mUploadSpeed, host->mnDownloads, mDownloadSpeed);
+			double totalUploadTimeinSec = (double)(host->mTotalSendTime) / (double)1000.0;
+			double urate = ((double)(host->mTotalBytesUploaded * 8))/((totalUploadTimeinSec == 0)?1:totalUploadTimeinSec);
+			double totalDownloadTimeinSec = (double)(host->mTotalReceiveTime) / (double)1000.0;
+			double drate = ((double)(host->mTotalBytesDownloaded * 8))/((totalDownloadTimeinSec == 0)?1:totalDownloadTimeinSec);
+			sprintf(returnMessage, "%s|%-35s %14d %12.3f %17d %12.3f", returnMessage, host->mHostname, host->mnUploads, urate, host->mnDownloads, drate);
 		}
 	}
-	printf("%s", returnMessage);
+	for (std::list<Host*>::iterator it = mDisconnectedHostList->begin(); it != mDisconnectedHostList->end(); it++) {
+		host = (*it);
+		if(host->mnDownloads != 0 || host->mnUploads !=0) {
+			double totalUploadTimeinSec = (double)(host->mTotalSendTime) / (double)1000.0;
+			double urate = ((double)(host->mTotalBytesUploaded * 8))/((totalUploadTimeinSec == 0)?1:totalUploadTimeinSec);
+			double totalDownloadTimeinSec = (double)(host->mTotalReceiveTime) / (double)1000.0;
+			double drate = ((double)(host->mTotalBytesDownloaded * 8))/((totalDownloadTimeinSec == 0)?1:totalDownloadTimeinSec);
+			sprintf(returnMessage, "%s|%-35s %14d %12.3f %17d %12.3f", returnMessage, host->mHostname, host->mnUploads, urate, host->mnDownloads, drate);
+		}
+	}
 	if(TCPSend(sd, returnMessage, PACKET_SIZE, false)) {
 		printf("Sending Statistics to server Failed\n");
 		return;
@@ -524,14 +600,13 @@ void Client::HandleTransferRequest(char* message, int sd) {
 	socketDownloadDetails[3] = fileSize;	//for keeping total size
 	socketDownloadDetails[4] = (unsigned long) fileName;	//storing the address of fileName pointer. A bit dodgy way of doing things but it works, I don't want to re write the whole data structure.
 	socketDownloadDetails[5] = (unsigned long) time;
-
+	g_bCurrentlyDownloading = true;
 	mCurrentDownloadList->push_back(socketDownloadDetails);
 	delete tokens;
 }
 
 void Client::HandleDownloadRequestFromOtherSide(char *message, int sd) {
 	vector<char*> *tokens = tokenize(message, "|");
-	unsigned int fileSize = 0;
 	if(tokens->size() < 2) {
 		printf("\nRequest Incorrect\n");
 		return;
@@ -568,9 +643,11 @@ void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned lon
 			perror("Getting time of day failed");
 			exit(1);
 		}
-		unsigned long totalTime = (end.tv_sec - start->tv_sec);
-		unsigned long rate = (fileSize * 8) / ((totalTime == 0)?1:totalTime );	//we dont want divide by zero now
-		printf("\nRx: %s->%s, File Size: %lu Bytes, Time Taken: %lu seconds, Tx Rate %lu bits/second\n", host->mHostname, this->mHostname, fileSize, totalTime, rate);
+		unsigned long totalTime = (end.tv_sec - start->tv_sec) * 1000 + ((end.tv_usec - start->tv_usec)/1000);
+		//unsigned long rate = (fileSize * 8 * 1000) / ((totalTime == 0)?1:totalTime );	//we dont want divide by zero now
+		double totalTimeInSec = (double)totalTime / (double)1000.0;
+		double rate = ((double)(fileSize * 8))/((totalTimeInSec == 0)?1:totalTimeInSec);
+		printf("\nRx : %s -> %s, File Size: %lu Bytes, Time Taken: %f seconds, Tx Rate: %f bits/second\n", host->mHostname, this->mHostname, fileSize, totalTimeInSec, rate);
 		close(fd);
 		mCurrentDownloadList->remove(socketDownloadDetails);
 		delete (char*)socketDownloadDetails[4];
@@ -581,10 +658,31 @@ void Client::HandlePacketOnSocketWithOngoingTransfer(char *message, unsigned lon
 		host->mnDownloads++;
 		host->mTotalBytesDownloaded += fileSize;
 		host->mTotalReceiveTime += totalTime;
+
+		if(mCurrentDownloadList->empty()) {
+			g_bCurrentlyDownloading = false;
+		}
 	}
+}
+
+Host* Client::FindPreviousConnection(Host* prevHost) {
+	Host *host = NULL;
+	for (std::list<Host*>::iterator it = mDisconnectedHostList->begin(); it != mDisconnectedHostList->end(); it++) {
+		host = (*it);
+		if(host->IsEqual(prevHost)) {
+
+			break;
+		}
+
+	}
+	if(host) {
+		mDisconnectedHostList->remove(host);
+	}
+	return host;
 }
 
 Client::~Client() {
 	delete mClientsList;
 	delete mConnectionList;
+	delete mDisconnectedHostList;
 }

@@ -110,11 +110,11 @@ char* ToUpper(char* input) {
 	return output;
 }
 
-int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/) {
+int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/, char *outIP /* =NULL*/) {
 	//code  copied from http://linux.die.net/man/3/getaddrinfo and http://beej.us/guide/bgnet/output/html/multipage/syscalls.html
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
-	int sd,s;
+	int sd = -1,s;
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_INET;    /* Allow IPv4 or IPv6 */
 	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
@@ -145,6 +145,9 @@ int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/
 
 		close(sd);
 	}
+	if(rp == NULL) {
+		return -1;
+	}
 	if(outHostName!=NULL) {
 		char *host = outHostName;
 		char serv[50];
@@ -162,6 +165,7 @@ int TCPConnect(char* IP, int nPort, bool exitOnFail, char *outHostName /*=NULL*/
 			printf("getnameinfo failed: %d\n", err);
 			exit(1);
 		}
+		strcpy(outIP, ipstr);
 	}
 	return sd;
 }
